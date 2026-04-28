@@ -285,14 +285,6 @@ namespace Dotmim.Sync
                     }
                 }
 
-                // Propagate any shadow columns added during row interception back to the parent schema table
-                // so that the scope info schema includes them for client provisioning and apply
-                foreach (var shadowCol in schemaChangesTable.GetShadowColumns())
-                {
-                    if (syncTable.Columns[shadowCol.ColumnName] == null)
-                        syncTable.Columns.Add(shadowCol.Clone());
-                }
-
                 foreach (var bpi in batchPartInfos.ToArray())
                 {
                     var fullPath = batchInfo.GetBatchPartInfoFullPath(bpi);

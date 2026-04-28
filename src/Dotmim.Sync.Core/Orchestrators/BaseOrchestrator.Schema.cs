@@ -200,6 +200,22 @@ namespace Dotmim.Sync
                 // Validate the column list and get the dmTable configuration object.
                 this.FillSyncTableWithColumns(context, setupTable, syncTable, lstColumns);
 
+                // Append shadow columns defined in the setup (these don't exist on the server DB)
+                if (setupTable.HasShadowColumns)
+                {
+                    var nextOrdinal = syncTable.Columns.Count;
+                    foreach (var shadowDef in setupTable.ShadowColumns)
+                    {
+                        var shadowCol = new SyncColumn(shadowDef.ColumnName, shadowDef.DotnetType)
+                        {
+                            IsShadow = true,
+                            AllowDBNull = true,
+                            Ordinal = nextOrdinal++,
+                        };
+                        syncTable.Columns.Add(shadowCol);
+                    }
+                }
+
                 // Check primary Keys
                 await this.SetPrimaryKeysAsync(context, syncTable, tableBuilder, connection, transaction).ConfigureAwait(false);
 

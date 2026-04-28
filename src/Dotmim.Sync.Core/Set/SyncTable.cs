@@ -202,27 +202,6 @@ namespace Dotmim.Sync
         }
 
         /// <summary>
-        /// Add a shadow column to this table. Shadow columns are server-injected columns
-        /// that flow to the client but are never tracked for upload back to the server.
-        /// Returns the existing shadow column if one with the same name already exists.
-        /// </summary>
-        public SyncColumn AddShadowColumn(string columnName, Type type)
-        {
-            var existing = this.Columns[columnName];
-            if (existing != null)
-                return existing;
-
-            var column = new SyncColumn(columnName, type)
-            {
-                IsShadow = true,
-                AllowDBNull = true,
-                Ordinal = this.Columns.Count,
-            };
-            this.Columns.Add(column);
-            return column;
-        }
-
-        /// <summary>
         /// Get all columns that are Primary keys, based on the names we have in PrimariKeys property.
         /// </summary>
         public IEnumerable<SyncColumn> GetPrimaryKeysColumns()

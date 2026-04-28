@@ -2,6 +2,8 @@
 using Dotmim.Sync.Enumerations;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Runtime.Serialization;
 
 namespace Dotmim.Sync
@@ -46,10 +48,24 @@ namespace Dotmim.Sync
         public SyncDirection SyncDirection { get; set; }
 
         /// <summary>
+        /// Gets or Sets the shadow columns collection.
+        /// Shadow columns do not exist in the server database; they are created on the client at provisioning time
+        /// and their values are populated at runtime (e.g. in the OnRowsChangesSelected interceptor).
+        /// </summary>
+        [DataMember(Name = "shcols", IsRequired = false, EmitDefaultValue = false, Order = 5)]
+        public Collection<SetupShadowColumn> ShadowColumns { get; set; }
+
+        /// <summary>
         /// Gets a value indicating whether check if SetupTable has columns. If not columns specified, all the columns from server database are retrieved.
         /// </summary>
         [IgnoreDataMember]
         public bool HasColumns => this.Columns?.Count > 0;
+
+        /// <summary>
+        /// Gets a value indicating whether this SetupTable has shadow columns defined.
+        /// </summary>
+        [IgnoreDataMember]
+        public bool HasShadowColumns => this.ShadowColumns?.Count > 0;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SetupTable"/> class.
@@ -81,6 +97,33 @@ namespace Dotmim.Sync
         /// </summary>
         public SetupTable(string tableName, IEnumerable<string> columnsName, string schemaName = null)
             : this(tableName, schemaName) => this.Columns.AddRange(columnsName);
+
+        /// <summary>
+        /// Add a shadow column definition. Shadow columns are created on the client database at provisioning time
+        /// and their values are set at runtime via the OnRowsChangesSelected interceptor.
+        /// </summary>
+        public SetupTable AddShadowColumn<T>(string columnName)
+        {
+            this.ShadowColumns ??= [];
+            if (this.ShadowColumns.Any(c => string.Equals(c.ColumnName, columnName, SyncGlobalization.DataSourceStringComparison)))
+                throw new Exception($"Shadow column {columnName} already exists in the table {this.TableName}");
+
+            this.ShadowColumns.Add(new SetupShadowColumn(columnName, typeof(T)));
+            return this;
+        }
+
+        /// <summary>
+        /// Add a shadow column definition with an explicit .NET type.
+        /// </summary>
+        public SetupTable AddShadowColumn(string columnName, Type type)
+        {
+            this.ShadowColumns ??= [];
+            if (this.ShadowColumns.Any(c => string.Equals(c.ColumnName, columnName, SyncGlobalization.DataSourceStringComparison)))
+                throw new Exception($"Shadow column {columnName} already exists in the table {this.TableName}");
+
+            this.ShadowColumns.Add(new SetupShadowColumn(columnName, type));
+            return this;
+        }
 
         /// <summary>
         /// ToString override. Gets the full name + columns count.
