@@ -2,12 +2,12 @@
 	<Sdk Name="DotNet.ReproducibleBuilds.Isolated" Version="1.2.4" />
 
 	<PropertyGroup>
-		<TargetFrameworkNetStandard>netstandard2.0</TargetFrameworkNetStandard>
-		<TargetFrameworkNetCore>netcoreapp3.1</TargetFrameworkNetCore>
-		<TargetFrameworkNet6>net6.0</TargetFrameworkNet6>
-		<TargetFrameworkNet8>net8.0</TargetFrameworkNet8>
+		<!-- .NET 10 preview: prune package manifests may lag behind the TFM (NETSDK1226). -->
+		<AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
 
-		<LangVersion>12.0</LangVersion>
+		<TargetFramework>net10.0</TargetFramework>
+
+		<LangVersion>latest</LangVersion>
 
 		<!-- Generate the lock file -->
 		<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
@@ -15,11 +15,11 @@
 		<!-- Restore the exact packages as listed in the lock file -->
 		<RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
 
-		<Version>1.3.5</Version>
+		<Version>1.3.6</Version>
 		<VersionSuffix>$(VersionSuffix)</VersionSuffix>
 		<Version Condition=" '$(VersionSuffix)' != '' ">$(Version)-$(VersionSuffix)</Version>
 
-		<PackageTags>Data, Database, Sync, Synchronization, Framework, Sql, MySql, MariaDB, PostgreSql, Sqlite, Dotmim.Sync, NetStandard, SyncFramework</PackageTags>
+		<PackageTags>Data, Database, Sync, Synchronization, Framework, Sql, MySql, MariaDB, PostgreSql, Sqlite, Dotmim.Sync, SyncFramework</PackageTags>
 		<PackageProjectUrl>https://dotmimsync.readthedocs.io/</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/Mimetis/Dotmim.Sync</RepositoryUrl>
 

@@ -4,7 +4,7 @@ This folder contains small demo applications that exercise **PostgreSQL-specific
 
 ## Prerequisites
 
-- .NET 8 SDK
+- .NET 10 SDK
 - A PostgreSQL instance with **PostGIS** (for example the `postgis/postgis` Docker image)
 - A database created for the demo (default name: `dotmim_sync_demo`)
 

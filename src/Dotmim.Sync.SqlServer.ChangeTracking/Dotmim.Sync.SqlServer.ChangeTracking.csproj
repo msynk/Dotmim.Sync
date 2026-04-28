@@ -1,12 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<TargetFrameworks>$(TargetFrameworkNetStandard);$(TargetFrameworkNet6);$(TargetFrameworkNet8)</TargetFrameworks>
 
 		<Authors>Sébastien Pertus</Authors>
 		<Company>Microsoft</Company>
 		<Title>Dotmim.Sync.SqlServer</Title>
-		<Summary>Sql Server Sync Provider using Sql Server Change Tracking feature. Client or Server provider .Net Standard 2.0</Summary>
-		<Description>Sql Server Sync Provider. Manage a sync process beetween two relational databases provider. This provider works with SQL Server and can be used as Client or Server provider. Based on SqlSyncProvider, but uses the SQL Server change tracking feature instead of tracking tables. .Net Standard 2.0</Description>
+		<Summary>SQL Server sync provider using SQL Server Change Tracking.</Summary>
+		<Description>SQL Server sync provider based on SqlSyncProvider that uses SQL Server Change Tracking instead of tracking tables.</Description>
 		<RepositoryType>git</RepositoryType>
 		<ApplicationIcon>favicon.ico</ApplicationIcon>
 		<PackageIcon>packageIcon.png</PackageIcon>

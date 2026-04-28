@@ -254,7 +254,7 @@ namespace Dotmim.Sync
                     // Disable check constraints
                     if (this.Options.DisableConstraintsOnApplyChanges)
                     {
-                        foreach (var table in schemaTables.ToArray().Reverse())
+                        foreach (var table in Enumerable.Reverse(schemaTables.ToArray()))
                         {
                             var exists = false;
                             var tableBuilder = this.GetSyncAdapter(table, scopeInfo).GetTableBuilder();
@@ -331,7 +331,7 @@ namespace Dotmim.Sync
                     // Eventually if we have the "Table" flag, then drop the table
                     if (hasDeprovisionTableFlag)
                     {
-                        foreach (var schemaTable in schemaTables.ToArray().Reverse())
+                        foreach (var schemaTable in Enumerable.Reverse(schemaTables.ToArray()))
                         {
                             var tableBuilder = this.GetSyncAdapter(schemaTable, scopeInfo).GetTableBuilder();
                             bool exists;
@@ -381,7 +381,7 @@ namespace Dotmim.Sync
                     // Disable check constraints
                     if (this.Options.DisableConstraintsOnApplyChanges && !hasDeprovisionTableFlag)
                     {
-                        foreach (var table in schemaTables.ToArray().Reverse())
+                        foreach (var table in Enumerable.Reverse(schemaTables.ToArray()))
                         {
                             var exists = false;
                             var tableBuilder = this.GetSyncAdapter(table, scopeInfo).GetTableBuilder();

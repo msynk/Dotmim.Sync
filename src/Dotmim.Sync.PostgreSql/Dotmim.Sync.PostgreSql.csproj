@@ -1,12 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFrameworks>$(TargetFrameworkNetStandard);$(TargetFrameworkNet6);$(TargetFrameworkNet8)</TargetFrameworks>
 		<Authors>Sébastien Pertus, Waseem Ahmad Mughal</Authors>
 		<Company>Microsoft</Company>
 		<Title>Dotmim.Sync.PostgreSql</Title>
-		<Summary>PostgreSql Sync Provider. Client or Server provider .Net Standard 2.0</Summary>
-		<Description>PostgreSql Sync Provider. Manage a sync process beetween two relational databases provider. This provider works with SQL Server and can be used as Client or Server provider .Net Standard 2.0</Description>
+		<Summary>PostgreSQL sync provider for client and server roles.</Summary>
+		<Description>PostgreSQL sync provider to manage synchronization between relational databases.</Description>
 		<RepositoryType>git</RepositoryType>
 		<ApplicationIcon>favicon.ico</ApplicationIcon>
 		<PackageIcon>packageIcon.png</PackageIcon>
@@ -27,11 +26,6 @@
 		<ProjectReference Include="..\Dotmim.Sync.Core\Dotmim.Sync.Core.csproj" />
 		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
 		<PackageReference Include="Npgsql" Version="8.0.3" />
-	</ItemGroup>
-
-
-	<ItemGroup>
-		<ProjectReference Include="..\Dotmim.Sync.Core\Dotmim.Sync.Core.csproj" />
 	</ItemGroup>
 
 </Project>

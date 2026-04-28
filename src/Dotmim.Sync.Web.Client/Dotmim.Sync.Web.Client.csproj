@@ -1,14 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<TargetFrameworks>$(TargetFrameworkNetStandard);$(TargetFrameworkNet6);$(TargetFrameworkNet8)</TargetFrameworks>
 
 		<Authors>Sébastien Pertus</Authors>
 		<Company>Microsoft</Company>
 		<Title>Dotmim.Sync.Web.Client</Title>
-		<Summary>Web client proxy Sync Provider .Net Standard 2.0</Summary>
+		<Summary>Web client proxy sync provider.</Summary>
 		<Description>Proxy to be able to Sync through an ASP.NET CORE application. Choose a Dotmim.Sync provider and protects your database call through web api calls only. this assembly is meant to be used from within your client application and will execute all the http calls</Description>
 		<RepositoryType>git</RepositoryType>
-		<PackageTags>Data, Database, Sync, Synchronization, Framework, Sql, MySql, Sqlite, Dotmim.Sync, NetStandard, SyncFramework</PackageTags>
+		<PackageTags>Data, Database, Sync, Synchronization, Framework, Sql, MySql, Sqlite, Dotmim.Sync, SyncFramework</PackageTags>
 		<ApplicationIcon>favicon.ico</ApplicationIcon>
 		<PackageIcon>packageIcon.png</PackageIcon>
 
@@ -17,18 +16,9 @@
 		<NoWarn>$(NoWarn)</NoWarn>
 	</PropertyGroup>
 
-	<ItemGroup Condition=" '$(TargetFramework)' == '$(TargetFrameworkNet6)'  ">
-		<PackageReference Include="Microsoft.Extensions.Features" Version="6.0.0" />
-		<PackageReference Include="Microsoft.AspNet.WebApi.Client" Version="6.0.0" />
-	</ItemGroup>
-	<ItemGroup Condition=" '$(TargetFramework)' == '$(TargetFrameworkNet8)' ">
+	<ItemGroup>
 		<PackageReference Include="Microsoft.Extensions.Features" Version="8.0.6" />
 		<PackageReference Include="Microsoft.Net.Http.Headers" Version="8.0.6" />
-	</ItemGroup>
-	<ItemGroup Condition=" '$(TargetFramework)' == '$(TargetFrameworkNetStandard)' ">
-		<PackageReference Include="Microsoft.Extensions.Features" Version="6.0.0" />
-		<PackageReference Include="Microsoft.AspNet.WebApi.Client" Version="6.0.0" />
-		<PackageReference Include="Microsoft.Net.Http.Headers" Version="2.2.8" />
 	</ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />

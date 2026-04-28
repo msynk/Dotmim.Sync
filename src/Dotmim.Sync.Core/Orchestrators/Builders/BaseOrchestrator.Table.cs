@@ -123,7 +123,7 @@ namespace Dotmim.Sync
 
                     // Sorting tables based on dependencies between them
                     var schemaTables = scopeInfo.Schema.Tables.SortByDependencies(tab => tab.GetRelations().Select(r => r.GetParentTable())).ToArray();
-                    var reverseSchemaTables = schemaTables.Reverse();
+                    var reverseSchemaTables = Enumerable.Reverse(schemaTables);
 
                     // if we overwritten all tables, we need to delete all of them, before recreating them
                     if (overwrite)

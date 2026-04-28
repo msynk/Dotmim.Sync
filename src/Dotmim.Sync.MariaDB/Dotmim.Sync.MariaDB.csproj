@@ -1,13 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFrameworks>$(TargetFrameworkNetStandard);$(TargetFrameworkNet6);$(TargetFrameworkNet8)</TargetFrameworks>
 
 		<Authors>Sébastien Pertus</Authors>
 		<Company>Microsoft</Company>
 		<Title>Dotmim.Sync.MariaDB</Title>
-		<Summary>MariaDB Sync Provider. Client or Server provider .Net Standard 2.0</Summary>
-		<Description>MariaDB Sync Provider. Manage a sync process beetween two relational databases provider. This provider can be used as Client or Server provider .Net Standard 2.0</Description>
+		<Summary>MariaDB sync provider for client and server roles.</Summary>
+		<Description>MariaDB sync provider to manage synchronization between relational databases.</Description>
 		<RepositoryType>git</RepositoryType>
 		<ApplicationIcon>favicon.ico</ApplicationIcon>
 		<PackageIcon>packageIcon.png</PackageIcon>
@@ -50,12 +49,8 @@
 		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
 	</ItemGroup>
 
-	<ItemGroup Condition=" '$(TargetFramework)' == '$(TargetFrameworkNet6)' OR '$(TargetFramework)' == '$(TargetFrameworkNet8)' ">
+	<ItemGroup>
 		<PackageReference Include="MySqlConnector" Version="2.3.7" />
-	</ItemGroup>
-
-	<ItemGroup Condition=" '$(TargetFramework)' == '$(TargetFrameworkNetStandard)' ">
-		<PackageReference Include="MySqlConnector" Version="0.69.10" />
 	</ItemGroup>
 
 	<ItemGroup>
