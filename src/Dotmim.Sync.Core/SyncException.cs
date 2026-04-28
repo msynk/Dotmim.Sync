@@ -628,6 +628,48 @@ namespace Dotmim.Sync
     }
 
     /// <summary>
+    /// Thrown when <see cref="SetupTable.ExcludedColumns"/> names a column that does not exist on the data source table.
+    /// </summary>
+    public class UnknownExcludedColumnException : Exception
+    {
+        private new const string Message = "Excluded column {0} does not exist on table {1}.";
+
+        /// <inheritdoc cref="UnknownExcludedColumnException"/>
+        public UnknownExcludedColumnException(string columnName, string tableFullName)
+            : base(string.Format(CultureInfo.InvariantCulture, Message, columnName, tableFullName))
+        {
+        }
+    }
+
+    /// <summary>
+    /// Thrown when a primary key column is listed in <see cref="SetupTable.ExcludedColumns"/>.
+    /// </summary>
+    public class ExcludedPrimaryKeyColumnException : Exception
+    {
+        private new const string Message = "Cannot exclude primary key column {0} from table {1}.";
+
+        /// <inheritdoc cref="ExcludedPrimaryKeyColumnException"/>
+        public ExcludedPrimaryKeyColumnException(string columnName, string tableFullName)
+            : base(string.Format(CultureInfo.InvariantCulture, Message, columnName, tableFullName))
+        {
+        }
+    }
+
+    /// <summary>
+    /// Thrown when a row filter references a column that is excluded from synchronization for that table.
+    /// </summary>
+    public class FilterReferencesExcludedColumnException : Exception
+    {
+        private new const string Message = "Filter on table {2} references column {0} on {1}, but that column is excluded from the sync setup.";
+
+        /// <inheritdoc cref="FilterReferencesExcludedColumnException"/>
+        public FilterReferencesExcludedColumnException(string columnName, string referencedTableFullName, string filterTableName)
+            : base(string.Format(CultureInfo.InvariantCulture, Message, columnName, referencedTableFullName, filterTableName))
+        {
+        }
+    }
+
+    /// <summary>
     /// Setup columns exception. Used when a setup table has no columns during provisioning.
     /// </summary>
     public class MissingsColumnException : Exception

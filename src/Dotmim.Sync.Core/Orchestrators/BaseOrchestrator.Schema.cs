@@ -100,6 +100,8 @@ namespace Dotmim.Sync
                 if (setup == null || setup.Tables.Count <= 0)
                     throw new MissingTablesException();
 
+                this.ValidateFiltersDoNotReferenceExcludedColumns(setup);
+
                 using var runner = await this.GetConnectionAsync(context, SyncMode.NoTransaction, SyncStage.Provisioning, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
                 await using (runner.ConfigureAwait(false))
                 {
@@ -197,8 +199,11 @@ namespace Dotmim.Sync
                 // get columns list
                 var lstColumns = await tableBuilder.GetColumnsAsync(connection, transaction).ConfigureAwait(false);
 
+                var schemaPrimaryKeys = await tableBuilder.GetPrimaryKeysAsync(connection, transaction).ConfigureAwait(false);
+                var primaryKeyNames = schemaPrimaryKeys?.Select(p => p.ColumnName).ToList() ?? [];
+
                 // Validate the column list and get the dmTable configuration object.
-                this.FillSyncTableWithColumns(context, setupTable, syncTable, lstColumns);
+                this.FillSyncTableWithColumns(context, setupTable, syncTable, lstColumns, primaryKeyNames);
 
                 // Append shadow columns defined in the setup (these don't exist on the server DB)
                 if (setupTable.HasShadowColumns)
@@ -236,10 +241,53 @@ namespace Dotmim.Sync
         }
 
         /// <summary>
+        /// Fail fast if a row filter references a column excluded from sync for that table.
+        /// </summary>
+        private void ValidateFiltersDoNotReferenceExcludedColumns(SyncSetup setup)
+        {
+            if (setup?.Filters == null)
+                return;
+
+            foreach (var filter in setup.Filters)
+            {
+                if (filter.Wheres != null)
+                {
+                    foreach (var where in filter.Wheres)
+                    {
+                        var schemaNorm = string.IsNullOrEmpty(where.SchemaName) ? string.Empty : where.SchemaName;
+                        var st = setup.Tables[where.TableName, schemaNorm];
+                        if (st == null || !st.HasExcludedColumns)
+                            continue;
+
+                        if (st.ExcludedColumns.Contains(where.ColumnName))
+                            throw new FilterReferencesExcludedColumnException(where.ColumnName, st.GetFullName(), filter.TableName);
+                    }
+                }
+
+                if (filter.Parameters != null)
+                {
+                    foreach (var param in filter.Parameters)
+                    {
+                        if (string.IsNullOrEmpty(param.TableName))
+                            continue;
+
+                        var schemaNorm = string.IsNullOrEmpty(param.SchemaName) ? string.Empty : param.SchemaName;
+                        var st = setup.Tables[param.TableName, schemaNorm];
+                        if (st == null || !st.HasExcludedColumns)
+                            continue;
+
+                        if (st.ExcludedColumns.Contains(param.Name))
+                            throw new FilterReferencesExcludedColumnException(param.Name, st.GetFullName(), filter.TableName);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// Generate the DmTable configuration from a given columns list
         /// Validate that all columns are currently supported by the provider.
         /// </summary>
-        private void FillSyncTableWithColumns(SyncContext context, SetupTable setupTable, SyncTable schemaTable, IEnumerable<SyncColumn> columns)
+        private void FillSyncTableWithColumns(SyncContext context, SetupTable setupTable, SyncTable schemaTable, IEnumerable<SyncColumn> columns, IReadOnlyList<string> primaryKeyColumnNames)
         {
             try
             {
@@ -263,30 +311,76 @@ namespace Dotmim.Sync
                 if (schemaTable.Columns.Count > 0)
                     schemaTable.Columns.Clear();
 
-                List<SyncColumn> lstColumns;
+                var sc = SyncGlobalization.DataSourceStringComparison;
 
-                // Validate columns list from setup table if any
+                List<SyncColumn> includedAfterWhitelist;
+
+                // Validate columns list from setup table if any (same rules as before: Count > 1 => explicit ordered list)
                 if (setupTable.Columns != null && setupTable.Columns.Count > 1)
                 {
-                    lstColumns = new List<SyncColumn>();
+                    includedAfterWhitelist = new List<SyncColumn>();
 
                     foreach (var setupColumn in setupTable.Columns)
                     {
-                        // Check if the columns list contains the column name we specified in the setup
-                        var column = columnsList.FirstOrDefault(c => c.ColumnName.Equals(setupColumn, SyncGlobalization.DataSourceStringComparison));
+                        var column = columnsList.FirstOrDefault(c => c.ColumnName.Equals(setupColumn, sc));
 
                         if (column == null)
                             throw new MissingColumnException(setupColumn, schemaTable.TableName);
-                        else
-                            ((List<SyncColumn>)lstColumns).Add(column);
+
+                        includedAfterWhitelist.Add(column);
                     }
                 }
                 else
                 {
-                    lstColumns = columnsList;
+                    includedAfterWhitelist = columnsList
+                        .Where(c => setupTable.Columns == null || setupTable.Columns.Count <= 0 || setupTable.Columns.Contains(c.ColumnName))
+                        .ToList();
                 }
 
-                foreach (var column in lstColumns.OrderBy(c => c.Ordinal))
+                // Snapshot after include/whitelist rules, before subtractive exclusions. Used to skip "mandatory column"
+                // validation for columns that were intentionally removed only by ExcludedColumns.
+                var columnsAfterWhitelistBeforeExclusion = includedAfterWhitelist.ToList();
+
+                var excluded = setupTable.ExcludedColumns;
+                if (excluded != null && excluded.Count > 0)
+                {
+                    foreach (var excludedName in excluded)
+                    {
+                        if (!columnsList.Any(c => c.ColumnName.Equals(excludedName, sc)))
+                            throw new UnknownExcludedColumnException(excludedName, setupTable.GetFullName());
+                    }
+
+                    foreach (var pkName in primaryKeyColumnNames)
+                    {
+                        if (excluded.Any(e => e.Equals(pkName, sc)))
+                            throw new ExcludedPrimaryKeyColumnException(pkName, setupTable.GetFullName());
+                    }
+
+                    includedAfterWhitelist = includedAfterWhitelist
+                        .Where(c => !excluded.Contains(c.ColumnName))
+                        .ToList();
+                }
+
+                if (includedAfterWhitelist.Count == 0)
+                    throw new MissingsColumnException(setupTable.GetFullName());
+
+                bool IsInResolved(SyncColumn col) => includedAfterWhitelist.Any(r => r.ColumnName.Equals(col.ColumnName, sc));
+
+                foreach (var column in columnsList)
+                {
+                    if (IsInResolved(column))
+                        continue;
+
+                    // Columns removed only by ExcludedColumns were in the post-whitelist set but not in the final schema.
+                    // Do not treat them as "mandatory but missing from setup" when NOT NULL on the server.
+                    if (columnsAfterWhitelistBeforeExclusion.Any(r => r.ColumnName.Equals(column.ColumnName, sc)))
+                        continue;
+
+                    if (!column.AllowDBNull && !column.IsCompute && !column.IsReadOnly && string.IsNullOrEmpty(column.DefaultValue))
+                        throw new Exception($"In table {setupTable.GetFullName()}, column {column.ColumnName} is not part of your setup. But it seems this columns is mandatory in your data source.");
+                }
+
+                foreach (var column in includedAfterWhitelist.OrderBy(c => c.Ordinal))
                 {
                     // First of all validate if the column is currently supported
                     if (!this.Provider.GetMetadata().IsValid(column))
@@ -344,15 +438,7 @@ namespace Dotmim.Sync
                     // Important to set it at the end, because we are altering column.DataType here
                     column.SetType(this.Provider.GetMetadata().GetType(column));
 
-                    // if setup table has no columns, we add all columns from db
-                    // otherwise check if columns exist in the data source
-                    if (setupTable.Columns == null || setupTable.Columns.Count <= 0 || setupTable.Columns.Contains(column.ColumnName))
-                        schemaTable.Columns.Add(column);
-
-                    // If column does not allow null value and is not compute
-                    // We will not be able to insert a row, so raise an error
-                    else if (!column.AllowDBNull && !column.IsCompute && !column.IsReadOnly && string.IsNullOrEmpty(column.DefaultValue))
-                        throw new Exception($"In table {setupTable.GetFullName()}, column {column.ColumnName} is not part of your setup. But it seems this columns is mandatory in your data source.");
+                    schemaTable.Columns.Add(column);
                 }
             }
             catch (Exception ex)

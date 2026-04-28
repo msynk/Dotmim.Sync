@@ -56,10 +56,24 @@ namespace Dotmim.Sync
         public Collection<SetupShadowColumn> ShadowColumns { get; set; }
 
         /// <summary>
+        /// Gets or sets column names to omit from synchronization for this table.
+        /// Applied after the include list in <see cref="Columns"/> (if any): the effective column set is (included columns) minus (excluded columns).
+        /// Exclusions apply only to columns that exist on the data source; primary key columns cannot be excluded.
+        /// </summary>
+        [DataMember(Name = "ecols", IsRequired = false, EmitDefaultValue = false, Order = 6)]
+        public SetupColumns ExcludedColumns { get; set; }
+
+        /// <summary>
         /// Gets a value indicating whether check if SetupTable has columns. If not columns specified, all the columns from server database are retrieved.
         /// </summary>
         [IgnoreDataMember]
         public bool HasColumns => this.Columns?.Count > 0;
+
+        /// <summary>
+        /// Gets a value indicating whether this setup table has excluded columns defined.
+        /// </summary>
+        [IgnoreDataMember]
+        public bool HasExcludedColumns => this.ExcludedColumns?.Count > 0;
 
         /// <summary>
         /// Gets a value indicating whether this SetupTable has shadow columns defined.
@@ -88,6 +102,7 @@ namespace Dotmim.Sync
             this.SchemaName = string.IsNullOrEmpty(tableParser.SchemaName) ? string.Empty : tableParser.SchemaName;
 
             this.Columns = [];
+            this.ExcludedColumns = [];
         }
 
         /// <summary>
@@ -126,9 +141,37 @@ namespace Dotmim.Sync
         }
 
         /// <summary>
+        /// Exclude a column from synchronization (must exist on the data source; cannot be a primary key column).
+        /// </summary>
+        public SetupTable ExcludeColumn(string columnName)
+        {
+            this.ExcludedColumns ??= [];
+            this.ExcludedColumns.Add(columnName);
+            return this;
+        }
+
+        /// <summary>
+        /// Exclude multiple columns from synchronization.
+        /// </summary>
+        public SetupTable ExcludeColumns(params string[] columnNames)
+        {
+            this.ExcludedColumns ??= [];
+            this.ExcludedColumns.AddRange(columnNames);
+            return this;
+        }
+
+        /// <summary>
         /// ToString override. Gets the full name + columns count.
         /// </summary>
-        public override string ToString() => this.GetFullName() + (this.HasColumns ? $" ({this.Columns.Count} columns)" : string.Empty);
+        public override string ToString()
+        {
+            var parts = this.GetFullName();
+            if (this.HasColumns)
+                parts += $" ({this.Columns.Count} columns)";
+            if (this.HasExcludedColumns)
+                parts += $" (-{this.ExcludedColumns.Count} excluded)";
+            return parts;
+        }
 
         /// <summary>
         /// Gets the full name of the table, based on schema name + "." + table name (if schema name exists).
@@ -147,9 +190,16 @@ namespace Dotmim.Sync
             if (!this.EqualsByName(otherInstance))
                 return false;
 
+            var thisExEmpty = this.ExcludedColumns == null || this.ExcludedColumns.Count == 0;
+            var otherExEmpty = otherInstance.ExcludedColumns == null || otherInstance.ExcludedColumns.Count == 0;
+            var excludedEqual = (thisExEmpty && otherExEmpty)
+                || (!thisExEmpty && !otherExEmpty
+                    && this.ExcludedColumns.CompareWith(otherInstance.ExcludedColumns, (c, oc) => string.Equals(c, oc, sc)));
+
             // checking properties
             return this.SyncDirection == otherInstance.SyncDirection
-                    && this.Columns.CompareWith(otherInstance.Columns, (c, oc) => string.Equals(c, oc, sc));
+                    && this.Columns.CompareWith(otherInstance.Columns, (c, oc) => string.Equals(c, oc, sc))
+                    && excludedEqual;
         }
 
         /// <inheritdoc cref="SyncNamedItem{T}.GetAllNamesProperties"/>

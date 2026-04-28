@@ -143,7 +143,28 @@ Once your ``SyncSetup`` instance is created (with your tables list), you can spe
         "AddressID", "AddressLine1", "City", "PostalCode" });
 
 
-For instance, table ``Customer`` and ``Address`` won't sync all their columns, but only those specified. 
+For instance, table ``Customer`` and ``Address`` won't sync all their columns, but only those specified.
+
+Excluding columns
+^^^^^^^^^^^^^^^^^^^^^
+
+You can instead (or additionally) list columns to **omit** from sync. The effective column set is: columns that pass the include list in ``Columns`` (if you set any), **minus** names in ``ExcludedColumns``. If ``Columns`` is empty, all data-source columns are candidates except those you exclude.
+
+.. code-block:: csharp
+
+    var setup = new SyncSetup("Customer", "Address");
+
+    // Sync all columns except large or sensitive ones
+    setup.Tables["Customer"].ExcludedColumns.AddRange(new string[] { "PasswordHash", "Photo" });
+
+    // Or fluent style
+    setup.Tables["Address"].ExcludeColumns("SpatialLocation", "Timestamp");
+
+If you combine both, exclusions apply **after** the include list (for example only ``A``, ``B``, ``C`` from ``Columns``, then remove ``B`` via ``ExcludedColumns``).
+
+Excluded names must exist on the table in the data source. You **cannot** exclude a **primary key** column. Row filters (``SetupFilter`` parameters and ``AddWhere`` clauses) must not reference a column that you excluded on that table; otherwise configuration will fail with a clear error.
+
+Foreign key columns that you exclude may cause related ``SyncRelation`` entries to be omitted from the schema, since relation endpoints require synced columns.
 
 Filtering Rows
 -----------------------
