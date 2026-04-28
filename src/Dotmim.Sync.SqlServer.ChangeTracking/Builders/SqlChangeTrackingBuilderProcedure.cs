@@ -518,7 +518,7 @@ namespace Dotmim.Sync.SqlServer.ChangeTracking.Builders
                 stringBuilder.AppendLine("SELECT ");
 
             var comma = "  ";
-            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true))
+            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true, includeShadow: false))
             {
                 var columnParser = new ObjectParser(mutableColumn.ColumnName, SqlObjectNames.LeftQuote, SqlObjectNames.RightQuote);
                 stringBuilder.AppendLine($"\t{comma}[base].{columnParser.QuotedShortName}");
@@ -579,7 +579,7 @@ namespace Dotmim.Sync.SqlServer.ChangeTracking.Builders
             stringBuilder.AppendLine("UNION");
             stringBuilder.AppendLine("SELECT");
             comma = "  ";
-            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true))
+            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true, includeShadow: false))
             {
                 var columnParser = new ObjectParser(mutableColumn.ColumnName, SqlObjectNames.LeftQuote, SqlObjectNames.RightQuote);
                 var isPrimaryKey = this.TableDescription.PrimaryKeys.Any(pkey => mutableColumn.ColumnName.Equals(pkey, SyncGlobalization.DataSourceStringComparison));
@@ -655,7 +655,7 @@ namespace Dotmim.Sync.SqlServer.ChangeTracking.Builders
 
             stringBuilder.AppendLine("SELECT DISTINCT");
 
-            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true))
+            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true, includeShadow: false))
             {
                 var columnParser = new ObjectParser(mutableColumn.ColumnName, SqlObjectNames.LeftQuote, SqlObjectNames.RightQuote);
 

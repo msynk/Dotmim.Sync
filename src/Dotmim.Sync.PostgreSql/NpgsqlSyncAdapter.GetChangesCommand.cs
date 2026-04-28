@@ -39,7 +39,7 @@ namespace Dotmim.Sync.PostgreSql
                 stringBuilder.AppendLine($"\tside.{columnParser.QuotedShortName}, ");
             }
 
-            foreach (var mutableColumn in this.TableDescription.GetMutableColumns())
+            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true, includeShadow: false))
             {
                 var columnParser = new ObjectParser(mutableColumn.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
 
@@ -124,7 +124,7 @@ namespace Dotmim.Sync.PostgreSql
                 stringBuilder.AppendLine("SELECT");
 
             var comma = "  ";
-            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true))
+            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true, includeShadow: false))
             {
                 var columnPaser = new ObjectParser(mutableColumn.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
 
@@ -186,7 +186,7 @@ namespace Dotmim.Sync.PostgreSql
             stringBuilder.AppendLine("UNION");
             stringBuilder.AppendLine("SELECT");
             comma = "  ";
-            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true))
+            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true, includeShadow: false))
             {
                 var columnParser = new ObjectParser(mutableColumn.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
                 var isPrimaryKey = this.TableDescription.PrimaryKeys.Any(pkey => mutableColumn.ColumnName.Equals(pkey, SyncGlobalization.DataSourceStringComparison));

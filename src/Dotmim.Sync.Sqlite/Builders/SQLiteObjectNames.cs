@@ -465,7 +465,7 @@ namespace Dotmim.Sync.Sqlite
                 empty = " AND ";
             }
 
-            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true))
+            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true, includeShadow: false))
             {
                 var nonPkColumnParser = new ObjectParser(mutableColumn.ColumnName, LeftQuote, RightQuote);
 
@@ -657,7 +657,7 @@ namespace Dotmim.Sync.Sqlite
             else
                 stringBuilder.AppendLine("SELECT ");
 
-            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true))
+            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true, includeShadow: false))
             {
                 var columnParser = new ObjectParser(mutableColumn.ColumnName, LeftQuote, RightQuote);
 

@@ -67,7 +67,7 @@ namespace Dotmim.Sync.SqlServer
 
             stringBuilder.AppendLine("SELECT ");
 
-            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true))
+            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true, includeShadow: false))
             {
                 var columnParser = new ObjectParser(mutableColumn.ColumnName, SqlObjectNames.LeftQuote, SqlObjectNames.RightQuote);
                 var isPrimaryKey = this.TableDescription.PrimaryKeys.Any(pkey => mutableColumn.ColumnName.Equals(pkey, SyncGlobalization.DataSourceStringComparison));

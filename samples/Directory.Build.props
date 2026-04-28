@@ -1,0 +1,9 @@
+<Project>
+	<!-- Samples are illustrative; relax repo-wide analyzer defaults that would block demo code. -->
+	<PropertyGroup>
+		<AnalysisLevel>none</AnalysisLevel>
+		<EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+		<WarningLevel>4</WarningLevel>
+		<NoWarn>$(NoWarn);SA0001;CA2007</NoWarn>
+	</PropertyGroup>
+</Project>
