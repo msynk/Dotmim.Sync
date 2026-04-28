@@ -257,6 +257,11 @@ namespace Dotmim.Sync.Serialization
                         this.writer.WriteNumber("p", 1);
                     }
 
+                    if (c.IsShadow)
+                    {
+                        this.writer.WriteNumber("ish", 1);
+                    }
+
                     this.writer.WriteEndObject();
                 }
 
@@ -416,7 +421,10 @@ namespace Dotmim.Sync.Serialization
                             while (jsonReader.Read() && jsonReader.TokenType != JsonTokenType.EndArray)
                             {
                                 object value = null;
-                                var columnType = index >= 1 ? schemaTable.Columns[index - 1].GetDataType() : typeof(short);
+
+                                // Guard against overflow if the JSON row has more values than the schema
+                                var withinBounds = index < values.Length;
+                                var columnType = (index >= 1 && (index - 1) < schemaTable.Columns.Count) ? schemaTable.Columns[index - 1].GetDataType() : typeof(short);
 
                                 if (this.readingRowAsync != null)
                                 {
@@ -442,7 +450,7 @@ namespace Dotmim.Sync.Serialization
 
                                     try
                                     {
-                                        if (value != null)
+                                        if (withinBounds && value != null)
                                             values[index] = SyncTypeConverter.TryConvertTo(value, columnType);
                                     }
                                     catch (Exception)
@@ -472,10 +480,23 @@ namespace Dotmim.Sync.Serialization
                                 schemaEmpty = false;
                             }
 
-                            if (values.Length != (schemaTable.Columns.Count + 1))
+                            var expectedLength = schemaTable.Columns.Count + 1;
+                            if (values.Length != expectedLength)
                             {
-                                var rowStr = "[" + string.Join(",", values) + "]";
-                                throw new Exception($"Table {schemaTable.GetFullName()} with {schemaTable.Columns.Count} columns does not have the same columns count as the row read {rowStr} which have {values.Length - 1} values.");
+                                // Row has fewer values than schema expects: expand with nulls (e.g. shadow columns added after batch was written)
+                                if (values.Length < expectedLength)
+                                {
+                                    var expanded = new object[expectedLength];
+                                    Array.Copy(values, expanded, values.Length);
+                                    values = expanded;
+                                }
+                                else
+                                {
+                                    // Row has more values than schema expects: trim to schema size
+                                    var trimmed = new object[expectedLength];
+                                    Array.Copy(values, trimmed, expectedLength);
+                                    values = trimmed;
+                                }
                             }
 
                             // if we have some columns, we check the date time thing
@@ -560,6 +581,7 @@ namespace Dotmim.Sync.Serialization
                     string includedColumnName = null;
                     string includedColumnTypeName = null;
                     var isPrimaryKey = false;
+                    var isShadow = false;
 
                     while (jsonReader.Read() && jsonReader.TokenType != JsonTokenType.EndObject)
                     {
@@ -576,6 +598,9 @@ namespace Dotmim.Sync.Serialization
                             case "p":
                                 isPrimaryKey = jsonReader.ReadAsInt16() == 1;
                                 break;
+                            case "ish":
+                                isShadow = jsonReader.ReadAsInt16() == 1;
+                                break;
                             default:
                                 break;
                         }
@@ -586,7 +611,8 @@ namespace Dotmim.Sync.Serialization
                     // Adding the column
                     if (!string.IsNullOrEmpty(includedColumnName) && !string.IsNullOrEmpty(includedColumnTypeName))
                     {
-                        schemaTable.Columns.Add(new SyncColumn(includedColumnName, includedColumnType));
+                        var syncColumn = new SyncColumn(includedColumnName, includedColumnType) { IsShadow = isShadow, AllowDBNull = isShadow || false };
+                        schemaTable.Columns.Add(syncColumn);
 
                         if (isPrimaryKey)
                             schemaTable.PrimaryKeys.Add(includedColumnName);

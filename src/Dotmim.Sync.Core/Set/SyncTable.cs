@@ -170,12 +170,15 @@ namespace Dotmim.Sync
         /// <summary>
         /// Get all columns that can be updated.
         /// </summary>
-        public IEnumerable<SyncColumn> GetMutableColumns(bool includeAutoIncrement = true, bool includePrimaryKeys = false)
+        public IEnumerable<SyncColumn> GetMutableColumns(bool includeAutoIncrement = true, bool includePrimaryKeys = false, bool includeShadow = true)
         {
             foreach (var column in this.Columns.OrderBy(c => c.Ordinal))
             {
                 if (!column.IsCompute && !column.IsReadOnly)
                 {
+                    if (!includeShadow && column.IsShadow)
+                        continue;
+
                     var isPrimaryKey = this.PrimaryKeys.Any(pkey => column.ColumnName.Equals(pkey, SyncGlobalization.DataSourceStringComparison));
 
                     if (includePrimaryKeys && isPrimaryKey)
@@ -184,6 +187,39 @@ namespace Dotmim.Sync
                         yield return column;
                 }
             }
+        }
+
+        /// <summary>
+        /// Get all shadow columns defined on this table.
+        /// </summary>
+        public IEnumerable<SyncColumn> GetShadowColumns()
+        {
+            foreach (var column in this.Columns.OrderBy(c => c.Ordinal))
+            {
+                if (column.IsShadow)
+                    yield return column;
+            }
+        }
+
+        /// <summary>
+        /// Add a shadow column to this table. Shadow columns are server-injected columns
+        /// that flow to the client but are never tracked for upload back to the server.
+        /// Returns the existing shadow column if one with the same name already exists.
+        /// </summary>
+        public SyncColumn AddShadowColumn(string columnName, Type type)
+        {
+            var existing = this.Columns[columnName];
+            if (existing != null)
+                return existing;
+
+            var column = new SyncColumn(columnName, type)
+            {
+                IsShadow = true,
+                AllowDBNull = true,
+                Ordinal = this.Columns.Count,
+            };
+            this.Columns.Add(column);
+            return column;
         }
 
         /// <summary>

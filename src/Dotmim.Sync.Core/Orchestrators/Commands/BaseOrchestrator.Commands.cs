@@ -19,8 +19,9 @@ namespace Dotmim.Sync
 
         /// <summary>
         /// Create a change table that contains only primary keys and mutable columns.
+        /// When <paramref name="excludeShadow"/> is true, shadow columns are excluded (used during upload to avoid sending them to the server).
         /// </summary>
-        public static SyncTable CreateChangesTable(SyncTable syncTable, SyncSet owner = null)
+        public static SyncTable CreateChangesTable(SyncTable syncTable, SyncSet owner = null, bool excludeShadow = false)
         {
             if (syncTable.Schema == null)
                 throw new ArgumentException("Schema can't be null when creating a changes table");
@@ -35,8 +36,8 @@ namespace Dotmim.Sync
             foreach (var pkey in syncTable.PrimaryKeys)
                 changesTable.PrimaryKeys.Add(pkey);
 
-            // get ordered columns that are mutables and pkeys
-            var orderedNames = syncTable.GetMutableColumns(false, true);
+            // get ordered columns that are mutables and pkeys, optionally excluding shadow columns
+            var orderedNames = syncTable.GetMutableColumns(false, true, includeShadow: !excludeShadow);
 
             foreach (var c in orderedNames)
                 changesTable.Columns.Add(c.Clone());

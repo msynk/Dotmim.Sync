@@ -199,7 +199,9 @@ namespace Dotmim.Sync
                 this.InternalSetCommandParametersValues(context, selectIncrementalChangesCommand, dbCommandType, syncAdapter, connection, transaction,
                     sync_scope_id: excludintScopeId, sync_min_timestamp: lastTimestamp, progress: progress, cancellationToken: cancellationToken);
 
-                var schemaChangesTable = CreateChangesTable(syncTable);
+                // Exclude shadow columns during upload so they are never sent to the server
+                var excludeShadow = context.SyncWay == SyncWay.Upload;
+                var schemaChangesTable = CreateChangesTable(syncTable, excludeShadow: excludeShadow);
 
                 // Statistics
                 var tableChangesSelected = new TableChangesSelected(schemaChangesTable.TableName, schemaChangesTable.SchemaName);
@@ -281,6 +283,14 @@ namespace Dotmim.Sync
                         await localSerializerDeleted.CloseFileAsync().ConfigureAwait(false);
                         await this.InterceptAsync(new BatchChangesCreatedArgs(context, batchPartInfoDeleted, schemaChangesTable, tableChangesSelected, SyncRowState.Deleted, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
                     }
+                }
+
+                // Propagate any shadow columns added during row interception back to the parent schema table
+                // so that the scope info schema includes them for client provisioning and apply
+                foreach (var shadowCol in schemaChangesTable.GetShadowColumns())
+                {
+                    if (syncTable.Columns[shadowCol.ColumnName] == null)
+                        syncTable.Columns.Add(shadowCol.Clone());
                 }
 
                 foreach (var bpi in batchPartInfos.ToArray())
@@ -630,6 +640,10 @@ namespace Dotmim.Sync
                     }
 
                     if (columnName == "sync_update_scope_id")
+                        continue;
+
+                    // Skip columns that are beyond the schema (e.g., shadow columns excluded during upload)
+                    if (i >= schemaTable.Columns.Count)
                         continue;
 
                     var columnValueObject = dataReader.GetValue(i);

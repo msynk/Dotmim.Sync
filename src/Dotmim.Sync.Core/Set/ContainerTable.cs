@@ -49,7 +49,7 @@ namespace Dotmim.Sync
             this.Columns = [];
             foreach (var column in table.Columns)
             {
-                this.Columns.Add(new ContainerTableColum { ColumnName = column.ColumnName, TypeName = column.DataType, IsPrimaryKey = table.IsPrimaryKey(column) ? 1 : null });
+                this.Columns.Add(new ContainerTableColum { ColumnName = column.ColumnName, TypeName = column.DataType, IsPrimaryKey = table.IsPrimaryKey(column) ? 1 : null, IsShadow = column.IsShadow ? (byte?)1 : null });
             }
         }
 
@@ -94,6 +94,12 @@ namespace Dotmim.Sync
         /// </summary>
         [DataMember(Name = "p", IsRequired = false, Order = 3, EmitDefaultValue = false)]
         public byte? IsPrimaryKey { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the column is a shadow column.
+        /// </summary>
+        [DataMember(Name = "ish", IsRequired = false, Order = 4, EmitDefaultValue = false)]
+        public byte? IsShadow { get; set; }
 
         /// <inheritdoc cref="ContainerTableColum"/>
         public ContainerTableColum()

@@ -73,7 +73,7 @@ namespace Dotmim.Sync
         /// <summary>
         /// Gets the row Length.
         /// </summary>
-        public int Length { get; }
+        public int Length { get; private set; }
 
         /// <summary>
         /// Get the value in the array that correspond to the column index given.
@@ -112,6 +112,27 @@ namespace Dotmim.Sync
 
                 this[index] = value;
             }
+        }
+
+        /// <summary>
+        /// Expand the row buffer to match a new schema that has additional shadow columns appended.
+        /// Existing column values (at their original ordinal positions) are preserved;
+        /// new positions are filled with null.
+        /// </summary>
+        public void ExpandBuffer(SyncTable newSchemaTable)
+        {
+            if (newSchemaTable.Columns.Count <= this.Length)
+                return;
+
+            var newLength = newSchemaTable.Columns.Count;
+            var newBuffer = new object[newLength + 1];
+
+            // Copy state + existing column values
+            Array.Copy(this.buffer, 0, newBuffer, 0, this.buffer.Length);
+
+            this.buffer = newBuffer;
+            this.Length = newLength;
+            this.SchemaTable = newSchemaTable;
         }
 
         /// <summary>

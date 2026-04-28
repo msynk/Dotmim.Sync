@@ -30,6 +30,27 @@ namespace Dotmim.Sync
         /// </summary>
         public SyncTable SchemaTable { get; }
 
+        /// <summary>
+        /// Set a value for a shadow column on the current row.
+        /// If the shadow column does not yet exist on the schema table, it is added automatically.
+        /// The row buffer is expanded as needed.
+        /// </summary>
+        public void SetShadowColumnValue(string columnName, Type type, object value)
+        {
+            var existing = this.SchemaTable.Columns[columnName];
+            if (existing == null)
+            {
+                this.SchemaTable.AddShadowColumn(columnName, type);
+                this.SyncRow.ExpandBuffer(this.SchemaTable);
+            }
+            else if (this.SyncRow.Length < this.SchemaTable.Columns.Count)
+            {
+                this.SyncRow.ExpandBuffer(this.SchemaTable);
+            }
+
+            this.SyncRow[columnName] = value;
+        }
+
         /// <inheritdoc cref="ProgressArgs.ProgressLevel"/>
         public override SyncProgressLevel ProgressLevel => SyncProgressLevel.Trace;
 

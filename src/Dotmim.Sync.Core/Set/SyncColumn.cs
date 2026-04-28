@@ -147,6 +147,15 @@ namespace Dotmim.Sync
         public string ExtraProperty1 { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether this column is a shadow column.
+        /// Shadow columns are injected at sync time by server-side code (e.g. in an interceptor),
+        /// do not exist in the server database, flow from server to client, get stored on the client,
+        /// but are never tracked for upload back to the server.
+        /// </summary>
+        [DataMember(Name = "ish", IsRequired = false, EmitDefaultValue = false, Order = 23)]
+        public bool IsShadow { get; set; }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="SyncColumn"/> class.
         /// Ctor for serialization purpose.
         /// </summary>
@@ -266,6 +275,7 @@ namespace Dotmim.Sync
                 ScaleIsSpecified = this.ScaleIsSpecified,
                 DefaultValue = this.DefaultValue,
                 ExtraProperty1 = this.ExtraProperty1,
+                IsShadow = this.IsShadow,
             };
             return clone;
         }
@@ -444,7 +454,8 @@ namespace Dotmim.Sync
                string.Equals(this.OriginalTypeName, otherInstance.OriginalTypeName, sc) &&
                this.DbType == otherInstance.DbType &&
                string.Equals(this.DefaultValue, otherInstance.DefaultValue, sc) &&
-               string.Equals(this.ExtraProperty1, otherInstance.ExtraProperty1, sc);
+               string.Equals(this.ExtraProperty1, otherInstance.ExtraProperty1, sc) &&
+               this.IsShadow == otherInstance.IsShadow;
         }
 
         /// <summary>

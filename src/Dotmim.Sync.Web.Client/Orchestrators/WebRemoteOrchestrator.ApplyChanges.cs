@@ -74,7 +74,8 @@ namespace Dotmim.Sync.Web.Client
                     foreach (var bpi in clientChanges.ClientBatchInfo.BatchPartsInfo.OrderBy(bpi => bpi.Index))
                     {
                         // Get the updatable schema for the only table contained in the batchpartinfo
-                        var schemaTable = CreateChangesTable(schema.Tables[bpi.TableName, bpi.SchemaName]);
+                        // Exclude shadow columns: they should never be uploaded to the server
+                        var schemaTable = CreateChangesTable(schema.Tables[bpi.TableName, bpi.SchemaName], excludeShadow: true);
 
                         // Create the send changes request
                         var changesToSend = new HttpMessageSendChangesRequest(context, cScopeInfoClient)

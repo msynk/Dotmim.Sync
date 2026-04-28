@@ -132,6 +132,28 @@ namespace Dotmim.Sync
                             if (tCreated && !atLeastOneTableBeenCreated)
                                 atLeastOneTableBeenCreated = true;
                         }
+                        else
+                        {
+                            // Table already exists: add any missing shadow columns via ALTER TABLE
+                            foreach (var shadowCol in schemaTable.GetShadowColumns())
+                            {
+                                bool colExists;
+                                (context, colExists) = await this.InternalExistsColumnAsync(scopeInfo, context, shadowCol.ColumnName, tableBuilder, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
+
+                                if (!colExists)
+                                {
+                                    using var addColCmd = await tableBuilder.GetAddColumnCommandAsync(shadowCol.ColumnName, connection, transaction).ConfigureAwait(false);
+                                    if (addColCmd != null)
+                                    {
+                                        await this.InterceptAsync(new ExecuteCommandArgs(context, addColCmd, default, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
+                                        await addColCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+                                        if (!atLeastOneTableBeenCreated)
+                                            atLeastOneTableBeenCreated = true;
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     if (provision.HasFlag(SyncProvision.TrackingTable))
