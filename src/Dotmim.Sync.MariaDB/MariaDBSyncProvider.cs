@@ -2,13 +2,7 @@
 using Dotmim.Sync.Enumerations;
 using Dotmim.Sync.Manager;
 using System.Data.Common;
-#if NET6_0_OR_GREATER
 using MySqlConnector;
-#elif NETSTANDARD
-using MySql.Data.MySqlClient;
-using System.Reflection;
-#endif
-
 #if MARIADB
 using Dotmim.Sync.MariaDB.Builders;
 #elif MYSQL

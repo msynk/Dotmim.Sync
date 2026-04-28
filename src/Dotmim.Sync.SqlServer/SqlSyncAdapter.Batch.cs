@@ -118,24 +118,15 @@ namespace Dotmim.Sync.SqlServer.Builders
                     // Since it will be requested by next request from GetConflict()
                     failedRows.Rows.Add(failedRow);
                 }
-
-#if NET6_0_OR_GREATER
                 await dataReader.CloseAsync().ConfigureAwait(false);
-#else
-                dataReader.Close();
-#endif
-            }
+}
             finally
             {
                 records.Clear();
 
                 if (!alreadyOpened && connection.State != ConnectionState.Closed)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
         }
 
         private static dynamic SetRowValue(SyncRow row, int i, SqlDbType sqlMetadataType)
@@ -153,7 +144,6 @@ namespace Dotmim.Sync.SqlServer.Builders
                         rowValue = SyncTypeConverter.TryConvertTo<bool>(rowValue);
                         break;
                     case SqlDbType.Date:
-#if NET6_0_OR_GREATER
                         rowValue = SyncTypeConverter.TryConvertTo<DateOnly>(rowValue);
 
                         if (rowValue < DateOnly.FromDateTime(sqlDateMin))
@@ -163,7 +153,6 @@ namespace Dotmim.Sync.SqlServer.Builders
                         // We still need to convert it to DateTime, since SqlDataRecord doesn't support DateOnly
                         rowValue = ((DateOnly)rowValue).ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
                         break;
-#endif
                     case SqlDbType.DateTime:
                     case SqlDbType.DateTime2:
                     case SqlDbType.SmallDateTime:

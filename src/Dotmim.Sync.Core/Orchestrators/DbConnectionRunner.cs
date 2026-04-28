@@ -52,12 +52,8 @@ namespace Dotmim.Sync
                 // Create a transaction
                 if (!alreadyInTransaction && syncMode == SyncMode.WithTransaction)
                 {
-#if NET6_0_OR_GREATER
                     transaction = await connection.BeginTransactionAsync(orchestrator.Provider.IsolationLevel, cancellationToken).ConfigureAwait(false);
-#else
-                    transaction = connection.BeginTransaction(orchestrator.Provider.IsolationLevel);
-#endif
-                    await orchestrator.InterceptAsync(new TransactionOpenedArgs(context, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
+await orchestrator.InterceptAsync(new TransactionOpenedArgs(context, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
                 }
 
                 return new DbConnectionRunner(orchestrator, context, connection, transaction, alreadyOpened, alreadyInTransaction, progress, cancellationToken);
@@ -242,23 +238,15 @@ namespace Dotmim.Sync
             {
                 if (!this.AlreadyInTransaction && this.Transaction != null)
                 {
-#if NET6_0_OR_GREATER
                     await this.Transaction.DisposeAsync().ConfigureAwait(false);
-#else
-                    this.Transaction.Dispose();
-#endif
-                    this.Transaction = null;
+this.Transaction = null;
                 }
 
                 if (!this.AlreadyOpened && this.Connection != null)
                 {
                     await this.Orchestrator.CloseConnectionAsync(this.Context, this.Connection, this.Progress, this.CancellationToken).ConfigureAwait(false);
-#if NET6_0_OR_GREATER
                     await this.Connection.DisposeAsync().ConfigureAwait(false);
-#else
-                    this.Connection.Dispose();
-#endif
-                    this.Connection = null;
+this.Connection = null;
                 }
             }
 

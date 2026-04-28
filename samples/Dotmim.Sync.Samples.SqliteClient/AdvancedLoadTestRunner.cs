@@ -24,7 +24,7 @@ internal static class AdvancedLoadTestRunner
         Console.WriteLine();
         Console.WriteLine("=== Advanced load test ===");
         Console.WriteLine($"Parallel clients (separate SQLite files): {parallel}");
-        Console.WriteLine($"Sequential rounds (each round syncs scopes 1–3 on main DB): {rounds}");
+        Console.WriteLine($"Sequential rounds (each round syncs scopes 1–{demoMenu.Count} on main DB): {rounds}");
         Console.WriteLine($"SyncOptions.BatchSize (KB, min 100):       {batchKb}");
         Console.WriteLine($"Quiet progress:                           {quiet}");
         Console.WriteLine();

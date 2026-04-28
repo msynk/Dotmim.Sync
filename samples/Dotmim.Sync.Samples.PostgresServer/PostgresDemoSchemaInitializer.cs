@@ -19,7 +19,10 @@ internal static class PostgresDemoSchemaInitializer
                 id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                 name text NOT NULL,
                 place_geom geometry(Point, 4326) NOT NULL,
-                category_tags integer[] NOT NULL DEFAULT ARRAY[]::integer[]
+                category_tags integer[] NOT NULL DEFAULT ARRAY[]::integer[],
+                audit_created_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                audit_updated_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                audit_tenant_id uuid NOT NULL DEFAULT gen_random_uuid()
             );
 
             CREATE TABLE IF NOT EXISTS public.{SyncSampleConstants.ShadowTable} (
@@ -33,7 +36,10 @@ internal static class PostgresDemoSchemaInitializer
                 first_name text NOT NULL,
                 last_name text NOT NULL,
                 email text NOT NULL,
-                secret_note text NOT NULL
+                secret_note text NOT NULL,
+                audit_created_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                audit_updated_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                audit_tenant_id uuid NOT NULL DEFAULT gen_random_uuid()
             );
 
             CREATE TABLE IF NOT EXISTS public.{SyncSampleConstants.LoadTestTable} (
@@ -44,11 +50,51 @@ internal static class PostgresDemoSchemaInitializer
             );
 
             CREATE INDEX IF NOT EXISTS ix_{SyncSampleConstants.LoadTestTable}_created_at ON public.{SyncSampleConstants.LoadTestTable} (created_at);
+
+            CREATE TABLE IF NOT EXISTS public.{SyncSampleConstants.GlobalAuditTable} (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                name text NOT NULL,
+                price numeric(10,2) NOT NULL,
+                internal_notes text NULL,
+                audit_created_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                audit_updated_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                audit_tenant_id uuid NOT NULL DEFAULT gen_random_uuid()
+            );
+
+            CREATE TABLE IF NOT EXISTS public.{SyncSampleConstants.GlobalAuditFeaturedTable} (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                name text NOT NULL,
+                price numeric(10,2) NOT NULL,
+                internal_notes text NULL,
+                audit_created_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                audit_updated_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                audit_tenant_id uuid NOT NULL DEFAULT gen_random_uuid()
+            );
             """;
 
         await using (var create = new NpgsqlCommand(ddl, conn))
         {
             await create.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        // Migration for already-provisioned dev databases: add the audit_* columns to existing demo tables
+        // so the SyncSetup.GloballyExcludeColumns demo can prove the global rule strips them from every scope,
+        // regardless of whether the scope's setup mentions them.
+        var migrateAuditColumnsDdl = $"""
+            ALTER TABLE IF EXISTS public.{SyncSampleConstants.GeometryArrayTable}
+                ADD COLUMN IF NOT EXISTS audit_created_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                ADD COLUMN IF NOT EXISTS audit_updated_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                ADD COLUMN IF NOT EXISTS audit_tenant_id  uuid        NOT NULL DEFAULT gen_random_uuid();
+
+            ALTER TABLE IF EXISTS public.{SyncSampleConstants.ExcludeTable}
+                ADD COLUMN IF NOT EXISTS audit_created_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                ADD COLUMN IF NOT EXISTS audit_updated_at timestamptz NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+                ADD COLUMN IF NOT EXISTS audit_tenant_id  uuid        NOT NULL DEFAULT gen_random_uuid();
+            """;
+
+        await using (var migrate = new NpgsqlCommand(migrateAuditColumnsDdl, conn))
+        {
+            await migrate.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
         await SeedTableAsync(
@@ -76,6 +122,23 @@ internal static class PostgresDemoSchemaInitializer
                 $"INSERT INTO public.{SyncSampleConstants.ExcludeTable} (first_name, last_name, email, secret_note) VALUES ('Ava', 'Stone', 'ava@example.com', 'VIP customer - internal only');",
                 $"INSERT INTO public.{SyncSampleConstants.ExcludeTable} (first_name, last_name, email, secret_note) VALUES ('Noah', 'Brooks', 'noah@example.com', 'Do not sync this private note');",
                 $"INSERT INTO public.{SyncSampleConstants.ExcludeTable} (first_name, last_name, email, secret_note) VALUES ('Mia', 'Clark', 'mia@example.com', 'Sensitive classification metadata');",
+            ]).ConfigureAwait(false);
+
+        await SeedTableAsync(
+            conn,
+            SyncSampleConstants.GlobalAuditTable,
+            [
+                $"INSERT INTO public.{SyncSampleConstants.GlobalAuditTable} (name, price, internal_notes) VALUES ('Alpha Widget', 19.99, 'Stocked in aisle 3');",
+                $"INSERT INTO public.{SyncSampleConstants.GlobalAuditTable} (name, price, internal_notes) VALUES ('Bravo Gadget', 29.50, 'Launch promo ends Friday');",
+                $"INSERT INTO public.{SyncSampleConstants.GlobalAuditTable} (name, price, internal_notes) VALUES ('Charlie Kit', 49.00, 'Internal SKU mapping notes');",
+            ]).ConfigureAwait(false);
+
+        await SeedTableAsync(
+            conn,
+            SyncSampleConstants.GlobalAuditFeaturedTable,
+            [
+                $"INSERT INTO public.{SyncSampleConstants.GlobalAuditFeaturedTable} (name, price, internal_notes) VALUES ('Delta Featured', 99.00, 'Promoted offer — server-only reminder');",
+                $"INSERT INTO public.{SyncSampleConstants.GlobalAuditFeaturedTable} (name, price, internal_notes) VALUES ('Echo Featured', 129.00, 'Bundle idea pending');",
             ]).ConfigureAwait(false);
 
         await TopUpLoadTestRowsAsync(conn).ConfigureAwait(false);

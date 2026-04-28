@@ -49,13 +49,8 @@ namespace Dotmim.Sync
 
                 if (!read)
                 {
-
-#if NET6_0_OR_GREATER
                     await dataReader.CloseAsync().ConfigureAwait(false);
-#else
-                    dataReader.Close();
-#endif
-                    command.Dispose();
+command.Dispose();
                     return (context, null);
                 }
 
@@ -84,14 +79,8 @@ namespace Dotmim.Sync
                 // if syncRow is not a deleted row, we can check for which kind of row it is.
                 if (syncRow != null && syncRow.RowState == SyncRowState.None)
                     syncRow.RowState = SyncRowState.Modified;
-
-#if NET6_0_OR_GREATER
                 await dataReader.CloseAsync().ConfigureAwait(false);
-#else
-                dataReader.Close();
-#endif
-
-                command.Dispose();
+command.Dispose();
 
                 return (context, syncRow);
             }

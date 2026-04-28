@@ -238,20 +238,11 @@ namespace Dotmim.Sync
         private static bool IsIndexedProperty(PropertyInfo propertyInfo) => propertyInfo != null && propertyInfo.GetIndexParameters().Length > 0;
 
         private static bool IsAnonymousType(Type type) =>
-#if NET6_0_OR_GREATER
             Attribute.IsDefined(type, typeof(CompilerGeneratedAttribute), false)
                        && type.IsGenericType && type.Name.Contains("AnonymousType", SyncGlobalization.DataSourceStringComparison)
                        && (type.Name.StartsWith("<>", SyncGlobalization.DataSourceStringComparison) || type.Name.StartsWith("VB$", SyncGlobalization.DataSourceStringComparison))
                        && (type.Attributes & TypeAttributes.NotPublic) == TypeAttributes.NotPublic;
-#else
-            Attribute.IsDefined(type, typeof(CompilerGeneratedAttribute), false)
-                       && type.IsGenericType && type.Name.Contains("AnonymousType")
-                       && (type.Name.StartsWith("<>", SyncGlobalization.DataSourceStringComparison) || type.Name.StartsWith("VB$", SyncGlobalization.DataSourceStringComparison))
-                       && (type.Attributes & TypeAttributes.NotPublic) == TypeAttributes.NotPublic;
-
-#endif
-
-        private static ConsoleColors GetLogLevelConsoleColors(LogLevel logLevel) =>
+private static ConsoleColors GetLogLevelConsoleColors(LogLevel logLevel) =>
 
             // We must explicitly set the background color if we are setting the foreground color,
             // since just setting one can look bad on the users console.

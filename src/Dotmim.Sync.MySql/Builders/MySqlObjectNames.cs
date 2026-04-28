@@ -1,11 +1,6 @@
 ﻿using Dotmim.Sync.Builders;
 using Dotmim.Sync.DatabaseStringParsers;
-
-#if NET6_0_OR_GREATER
 using MySqlConnector;
-#elif NETSTANDARD
-using MySql.Data.MySqlClient;
-#endif
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;

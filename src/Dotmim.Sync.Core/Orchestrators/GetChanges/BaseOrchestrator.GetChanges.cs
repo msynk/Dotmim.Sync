@@ -239,14 +239,8 @@ namespace Dotmim.Sync
                         else
                             batchPartInfoUpserts = await this.InternalAddRowToBatchPartInfoAsync(context, localSerializerModified, syncRow, batchInfo, batchPartInfoUpserts, batchPartInfos, schemaChangesTable, tableChangesSelected, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
                     }
-
-#if NET6_0_OR_GREATER
                     await dataReader.CloseAsync().ConfigureAwait(false);
-#else
-                    dataReader.Close();
-#endif
-
-                    // tmp Func
+// tmp Func
                     var closeSerializer = new Func<LocalJsonSerializer, BatchChangesCreatedArgs, Task>(async (localJsonSerializer, args) =>
                     {
                         // Close file
@@ -467,14 +461,8 @@ namespace Dotmim.Sync
                         else
                             tableChangesSelected.Upserts++;
                     }
-
-#if NET6_0_OR_GREATER
                     await dataReader.CloseAsync().ConfigureAwait(false);
-#else
-                    dataReader.Close();
-#endif
-
-                    // Check interceptor
+// Check interceptor
                     var changesArgs = new TableChangesSelectedArgs(context, null, null, syncTable, tableChangesSelected, connection, transaction);
                     await this.InterceptAsync(changesArgs, progress, cancellationToken).ConfigureAwait(false);
 

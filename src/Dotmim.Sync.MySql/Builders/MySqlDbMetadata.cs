@@ -1,12 +1,7 @@
 ﻿using Dotmim.Sync.Manager;
 using System;
 using System.Data;
-#if NET6_0_OR_GREATER
 using MySqlConnector;
-#elif NETSTANDARD
-using MySql.Data.MySqlClient;
-#endif
-
 #if MARIADB
 namespace Dotmim.Sync.MariaDB.Builders
 #elif MYSQL

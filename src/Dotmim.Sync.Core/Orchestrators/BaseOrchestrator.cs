@@ -267,12 +267,8 @@ namespace Dotmim.Sync
             {
                 if (connection != null && connection.State == ConnectionState.Open)
                 {
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-                }
+}
 
                 if (!cancellationToken.IsCancellationRequested)
                     await this.InterceptAsync(new ConnectionClosedArgs(context, connection), progress, cancellationToken).ConfigureAwait(false);

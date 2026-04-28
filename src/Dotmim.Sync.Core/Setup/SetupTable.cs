@@ -64,6 +64,15 @@ namespace Dotmim.Sync
         public SetupColumns ExcludedColumns { get; set; }
 
         /// <summary>
+        /// Gets or sets column names that must participate in synchronization for this table even if they are listed in
+        /// <see cref="SyncSetup.GlobalExcludedColumns"/> or in the owning setup's <see cref="SyncSetup.ExcludedColumns"/>.
+        /// This acts as a per-table bypass of the "general" (global / setup-level) exclusion rules and does not override
+        /// an entry in this same table's <see cref="ExcludedColumns"/>.
+        /// </summary>
+        [DataMember(Name = "icols", IsRequired = false, EmitDefaultValue = false, Order = 7)]
+        public SetupColumns IncludedColumns { get; set; }
+
+        /// <summary>
         /// Gets a value indicating whether check if SetupTable has columns. If not columns specified, all the columns from server database are retrieved.
         /// </summary>
         [IgnoreDataMember]
@@ -74,6 +83,13 @@ namespace Dotmim.Sync
         /// </summary>
         [IgnoreDataMember]
         public bool HasExcludedColumns => this.ExcludedColumns?.Count > 0;
+
+        /// <summary>
+        /// Gets a value indicating whether this setup table has per-table re-included columns defined
+        /// (columns that bypass <see cref="SyncSetup.GlobalExcludedColumns"/> / <see cref="SyncSetup.ExcludedColumns"/>).
+        /// </summary>
+        [IgnoreDataMember]
+        public bool HasIncludedColumns => this.IncludedColumns?.Count > 0;
 
         /// <summary>
         /// Gets a value indicating whether this SetupTable has shadow columns defined.
@@ -103,6 +119,7 @@ namespace Dotmim.Sync
 
             this.Columns = [];
             this.ExcludedColumns = [];
+            this.IncludedColumns = [];
         }
 
         /// <summary>
@@ -161,6 +178,29 @@ namespace Dotmim.Sync
         }
 
         /// <summary>
+        /// Re-include a column on this table even if it appears in <see cref="SyncSetup.GlobalExcludedColumns"/>
+        /// or in the owning setup's <see cref="SyncSetup.ExcludedColumns"/>. Cannot bypass this table's own
+        /// <see cref="ExcludedColumns"/>. The column must still exist on the data source.
+        /// </summary>
+        public SetupTable IncludeColumn(string columnName)
+        {
+            this.IncludedColumns ??= [];
+            this.IncludedColumns.Add(columnName);
+            return this;
+        }
+
+        /// <summary>
+        /// Re-include multiple columns on this table even if they appear in <see cref="SyncSetup.GlobalExcludedColumns"/>
+        /// or in the owning setup's <see cref="SyncSetup.ExcludedColumns"/>.
+        /// </summary>
+        public SetupTable IncludeColumns(params string[] columnNames)
+        {
+            this.IncludedColumns ??= [];
+            this.IncludedColumns.AddRange(columnNames);
+            return this;
+        }
+
+        /// <summary>
         /// ToString override. Gets the full name + columns count.
         /// </summary>
         public override string ToString()
@@ -170,6 +210,8 @@ namespace Dotmim.Sync
                 parts += $" ({this.Columns.Count} columns)";
             if (this.HasExcludedColumns)
                 parts += $" (-{this.ExcludedColumns.Count} excluded)";
+            if (this.HasIncludedColumns)
+                parts += $" (+{this.IncludedColumns.Count} included)";
             return parts;
         }
 
@@ -196,10 +238,17 @@ namespace Dotmim.Sync
                 || (!thisExEmpty && !otherExEmpty
                     && this.ExcludedColumns.CompareWith(otherInstance.ExcludedColumns, (c, oc) => string.Equals(c, oc, sc)));
 
+            var thisIncEmpty = this.IncludedColumns == null || this.IncludedColumns.Count == 0;
+            var otherIncEmpty = otherInstance.IncludedColumns == null || otherInstance.IncludedColumns.Count == 0;
+            var includedEqual = (thisIncEmpty && otherIncEmpty)
+                || (!thisIncEmpty && !otherIncEmpty
+                    && this.IncludedColumns.CompareWith(otherInstance.IncludedColumns, (c, oc) => string.Equals(c, oc, sc)));
+
             // checking properties
             return this.SyncDirection == otherInstance.SyncDirection
                     && this.Columns.CompareWith(otherInstance.Columns, (c, oc) => string.Equals(c, oc, sc))
-                    && excludedEqual;
+                    && excludedEqual
+                    && includedEqual;
         }
 
         /// <inheritdoc cref="SyncNamedItem{T}.GetAllNamesProperties"/>

@@ -118,7 +118,7 @@ namespace Dotmim.Sync
 
                     foreach (var setupTable in setup.Tables)
                     {
-                        var (syncTable, tableRelations) = await this.InternalGetTableSchemaAsync(context, setupTable, runner.Connection, runner.Transaction, runner.Progress, runner.CancellationToken).ConfigureAwait(false);
+                        var (syncTable, tableRelations) = await this.InternalGetTableSchemaAsync(context, setup, setupTable, runner.Connection, runner.Transaction, runner.Progress, runner.CancellationToken).ConfigureAwait(false);
 
                         // Add this table to schema
                         schema.Tables.Add(syncTable);
@@ -170,7 +170,7 @@ namespace Dotmim.Sync
         }
 
         private async Task<(SyncTable SyncTable, IEnumerable<DbRelationDefinition> Relations)> InternalGetTableSchemaAsync(
-            SyncContext context, SetupTable setupTable, DbConnection connection, DbTransaction transaction,
+            SyncContext context, SyncSetup setup, SetupTable setupTable, DbConnection connection, DbTransaction transaction,
             IProgress<ProgressArgs> progress, CancellationToken cancellationToken)
         {
             try
@@ -203,7 +203,7 @@ namespace Dotmim.Sync
                 var primaryKeyNames = schemaPrimaryKeys?.Select(p => p.ColumnName).ToList() ?? [];
 
                 // Validate the column list and get the dmTable configuration object.
-                this.FillSyncTableWithColumns(context, setupTable, syncTable, lstColumns, primaryKeyNames);
+                this.FillSyncTableWithColumns(context, setup, setupTable, syncTable, lstColumns, primaryKeyNames);
 
                 // Append shadow columns defined in the setup (these don't exist on the server DB)
                 if (setupTable.HasShadowColumns)
@@ -241,12 +241,29 @@ namespace Dotmim.Sync
         }
 
         /// <summary>
-        /// Fail fast if a row filter references a column excluded from sync for that table.
+        /// Fail fast if a row filter references a column excluded from sync for that table, whether the exclusion comes from
+        /// <see cref="SyncSetup.GlobalExcludedColumns"/>, <see cref="SyncSetup.ExcludedColumns"/>, or <see cref="SetupTable.ExcludedColumns"/>.
         /// </summary>
         private void ValidateFiltersDoNotReferenceExcludedColumns(SyncSetup setup)
         {
             if (setup?.Filters == null)
                 return;
+
+            var sc = SyncGlobalization.DataSourceStringComparison;
+
+            bool IsEffectivelyExcluded(SetupTable st, string columnName)
+            {
+                if (st == null || string.IsNullOrEmpty(columnName))
+                    return false;
+
+                foreach (var excludedName in setup.GetEffectiveExcludedColumnNames(st))
+                {
+                    if (string.Equals(excludedName, columnName, sc))
+                        return true;
+                }
+
+                return false;
+            }
 
             foreach (var filter in setup.Filters)
             {
@@ -256,10 +273,7 @@ namespace Dotmim.Sync
                     {
                         var schemaNorm = string.IsNullOrEmpty(where.SchemaName) ? string.Empty : where.SchemaName;
                         var st = setup.Tables[where.TableName, schemaNorm];
-                        if (st == null || !st.HasExcludedColumns)
-                            continue;
-
-                        if (st.ExcludedColumns.Contains(where.ColumnName))
+                        if (IsEffectivelyExcluded(st, where.ColumnName))
                             throw new FilterReferencesExcludedColumnException(where.ColumnName, st.GetFullName(), filter.TableName);
                     }
                 }
@@ -273,10 +287,7 @@ namespace Dotmim.Sync
 
                         var schemaNorm = string.IsNullOrEmpty(param.SchemaName) ? string.Empty : param.SchemaName;
                         var st = setup.Tables[param.TableName, schemaNorm];
-                        if (st == null || !st.HasExcludedColumns)
-                            continue;
-
-                        if (st.ExcludedColumns.Contains(param.Name))
+                        if (IsEffectivelyExcluded(st, param.Name))
                             throw new FilterReferencesExcludedColumnException(param.Name, st.GetFullName(), filter.TableName);
                     }
                 }
@@ -287,7 +298,7 @@ namespace Dotmim.Sync
         /// Generate the DmTable configuration from a given columns list
         /// Validate that all columns are currently supported by the provider.
         /// </summary>
-        private void FillSyncTableWithColumns(SyncContext context, SetupTable setupTable, SyncTable schemaTable, IEnumerable<SyncColumn> columns, IReadOnlyList<string> primaryKeyColumnNames)
+        private void FillSyncTableWithColumns(SyncContext context, SyncSetup setup, SetupTable setupTable, SyncTable schemaTable, IEnumerable<SyncColumn> columns, IReadOnlyList<string> primaryKeyColumnNames)
         {
             try
             {
@@ -341,10 +352,11 @@ namespace Dotmim.Sync
                 // validation for columns that were intentionally removed only by ExcludedColumns.
                 var columnsAfterWhitelistBeforeExclusion = includedAfterWhitelist.ToList();
 
-                var excluded = setupTable.ExcludedColumns;
-                if (excluded != null && excluded.Count > 0)
+                // Table-level explicit exclusions are strict: the column must exist and cannot be a primary key.
+                var tableExcluded = setupTable.ExcludedColumns;
+                if (tableExcluded != null && tableExcluded.Count > 0)
                 {
-                    foreach (var excludedName in excluded)
+                    foreach (var excludedName in tableExcluded)
                     {
                         if (!columnsList.Any(c => c.ColumnName.Equals(excludedName, sc)))
                             throw new UnknownExcludedColumnException(excludedName, setupTable.GetFullName());
@@ -352,12 +364,23 @@ namespace Dotmim.Sync
 
                     foreach (var pkName in primaryKeyColumnNames)
                     {
-                        if (excluded.Any(e => e.Equals(pkName, sc)))
+                        if (tableExcluded.Any(e => e.Equals(pkName, sc)))
                             throw new ExcludedPrimaryKeyColumnException(pkName, setupTable.GetFullName());
                     }
+                }
 
+                // Global + setup-level + table-level exclusions, minus this table's IncludedColumns bypass.
+                // Global / setup-level names are permissive: silently skip when the column is absent or is a primary key.
+                var effectiveExcluded = (setup != null
+                        ? setup.GetEffectiveExcludedColumnNames(setupTable)
+                        : tableExcluded ?? Enumerable.Empty<string>())
+                    .ToList();
+
+                if (effectiveExcluded.Count > 0)
+                {
                     includedAfterWhitelist = includedAfterWhitelist
-                        .Where(c => !excluded.Contains(c.ColumnName))
+                        .Where(c => !effectiveExcluded.Any(n => string.Equals(n, c.ColumnName, sc))
+                                    || primaryKeyColumnNames.Any(pk => string.Equals(pk, c.ColumnName, sc)))
                         .ToList();
                 }
 

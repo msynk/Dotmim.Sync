@@ -245,14 +245,8 @@ namespace Dotmim.Sync
 
                     if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                         scopeInfo = InternalReadScopeInfo(reader);
-
-#if NET6_0_OR_GREATER
                     await reader.CloseAsync().ConfigureAwait(false);
-#else
-                    reader.Close();
-#endif
-
-                    if (scopeInfo?.Schema != null)
+if (scopeInfo?.Schema != null)
                         scopeInfo.Schema.EnsureSchema();
 
                     var scopeLoadedArgs = new ScopeInfoLoadedArgs(context, scopeInfo, runner.Connection, runner.Transaction);
@@ -338,13 +332,8 @@ namespace Dotmim.Sync
 
                         clientScopes.Add(scopeInfo);
                     }
-
-#if NET6_0_OR_GREATER
                     await reader.CloseAsync().ConfigureAwait(false);
-#else
-                    reader.Close();
-#endif
-                    command.Dispose();
+command.Dispose();
 
                     return (context, clientScopes);
                 }
@@ -395,14 +384,8 @@ namespace Dotmim.Sync
                     await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
 
                     scopeInfo = InternalReadScopeInfo(reader);
-
-#if NET6_0_OR_GREATER
                     await reader.CloseAsync().ConfigureAwait(false);
-#else
-                    reader.Close();
-#endif
-
-                    // ensure schema on tables
+// ensure schema on tables
                     if (scopeInfo.Schema != null)
                         scopeInfo.Schema.EnsureSchema();
 

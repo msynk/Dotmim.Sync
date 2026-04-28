@@ -61,6 +61,26 @@ namespace Dotmim.Sync
         public string TrackingTablesSuffix { get; set; }
 
         /// <summary>
+        /// Gets or sets column names to omit from synchronization for every table in this setup (scope).
+        /// Applied in addition to <see cref="GlobalExcludedColumns"/> and to each <see cref="SetupTable.ExcludedColumns"/>.
+        /// A column listed here is silently ignored on tables that don't have it, and is never applied to primary key columns.
+        /// Use <see cref="SetupTable.IncludedColumns"/> on a specific table to bypass this (and the global) exclusion for that table.
+        /// </summary>
+        [DataMember(Name = "secols", IsRequired = false, EmitDefaultValue = false, Order = 9)]
+        public SetupColumns ExcludedColumns { get; set; }
+
+        /// <summary>
+        /// Gets the process-wide column exclusion list shared by every <see cref="SyncSetup"/> instance and every scope.
+        /// A column listed here is silently ignored on tables that don't have it, and is never applied to primary key columns.
+        /// Use <see cref="SetupTable.IncludedColumns"/> on a specific table to bypass this exclusion for that table.
+        /// </summary>
+        /// <remarks>
+        /// Because this collection is static, it affects every <see cref="SyncSetup"/> instance in the current AppDomain.
+        /// Populate it once during application startup (e.g. for audit/system columns like "CreatedOn", "UpdatedOn").
+        /// </remarks>
+        public static SetupColumns GlobalExcludedColumns { get; } = [];
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="SyncSetup"/> class.
         /// Create a list of tables to be added to the sync process.
         /// </summary>
@@ -82,6 +102,7 @@ namespace Dotmim.Sync
         {
             this.Tables = [];
             this.Filters = [];
+            this.ExcludedColumns = [];
 
             // this.Version = SyncVersion.Current.ToString();
         }
@@ -95,6 +116,120 @@ namespace Dotmim.Sync
         /// Gets a value indicating whether check if Setup has at least one table with columns.
         /// </summary>
         public bool HasColumns => this.Tables?.SelectMany(t => t.Columns).Count() > 0;  // using SelectMany to get columns and not Collection<Column>
+
+        /// <summary>
+        /// Gets a value indicating whether this setup has instance-level <see cref="ExcludedColumns"/> defined.
+        /// </summary>
+        public bool HasExcludedColumns => this.ExcludedColumns?.Count > 0;
+
+        /// <summary>
+        /// Exclude a column from synchronization for every table in this setup (scope). Duplicates are ignored.
+        /// A primary key or a column that does not exist on a given table is silently skipped for that table.
+        /// </summary>
+        public SyncSetup ExcludeColumn(string columnName)
+        {
+            this.ExcludedColumns ??= [];
+            if (!this.ExcludedColumns.Contains(columnName))
+                this.ExcludedColumns.Add(columnName);
+            return this;
+        }
+
+        /// <summary>
+        /// Exclude multiple columns from synchronization for every table in this setup (scope). Duplicates are ignored.
+        /// </summary>
+        public SyncSetup ExcludeColumns(params string[] columnNames)
+        {
+            this.ExcludedColumns ??= [];
+            if (columnNames == null)
+                return this;
+            foreach (var name in columnNames)
+            {
+                if (!this.ExcludedColumns.Contains(name))
+                    this.ExcludedColumns.Add(name);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Add a column to the process-wide <see cref="GlobalExcludedColumns"/> list. Duplicates are ignored.
+        /// </summary>
+        public static void GloballyExcludeColumn(string columnName)
+        {
+            if (!GlobalExcludedColumns.Contains(columnName))
+                GlobalExcludedColumns.Add(columnName);
+        }
+
+        /// <summary>
+        /// Add multiple columns to the process-wide <see cref="GlobalExcludedColumns"/> list. Duplicates are ignored.
+        /// </summary>
+        public static void GloballyExcludeColumns(params string[] columnNames)
+        {
+            if (columnNames == null)
+                return;
+            foreach (var name in columnNames)
+            {
+                if (!GlobalExcludedColumns.Contains(name))
+                    GlobalExcludedColumns.Add(name);
+            }
+        }
+
+        /// <summary>
+        /// Computes, by name, the set of columns that should be excluded from synchronization for the given <paramref name="setupTable"/>.
+        /// Union of <see cref="GlobalExcludedColumns"/>, this setup's <see cref="ExcludedColumns"/>, and the table's own <see cref="SetupTable.ExcludedColumns"/>,
+        /// minus the names listed in <see cref="SetupTable.IncludedColumns"/> (which bypass global / setup-level exclusions for that table only).
+        /// </summary>
+        /// <remarks>
+        /// The returned names are not checked against the physical schema; filter validation and schema resolution apply existence / primary key checks separately.
+        /// A name appearing in both the table's explicit <see cref="SetupTable.ExcludedColumns"/> and its <see cref="SetupTable.IncludedColumns"/> stays excluded
+        /// (the per-table exclusion takes precedence, since the Include list is a bypass for the "general" exclusion).
+        /// </remarks>
+        public IEnumerable<string> GetEffectiveExcludedColumnNames(SetupTable setupTable)
+        {
+            Guard.ThrowIfNull(setupTable);
+
+            var sc = SyncGlobalization.DataSourceStringComparison;
+            var result = new List<string>();
+
+            bool Contains(IEnumerable<string> source, string name)
+                => source != null && source.Any(n => string.Equals(n, name, sc));
+
+            void AddIfMissing(string name)
+            {
+                if (!Contains(result, name))
+                    result.Add(name);
+            }
+
+            // 1) Global + setup-level exclusions can be bypassed by the table's IncludedColumns.
+            if (GlobalExcludedColumns != null)
+            {
+                foreach (var name in GlobalExcludedColumns)
+                {
+                    if (Contains(setupTable.IncludedColumns, name))
+                        continue;
+                    AddIfMissing(name);
+                }
+            }
+
+            if (this.ExcludedColumns != null)
+            {
+                foreach (var name in this.ExcludedColumns)
+                {
+                    if (Contains(setupTable.IncludedColumns, name))
+                        continue;
+                    AddIfMissing(name);
+                }
+            }
+
+            // 2) Table-level exclusions always apply; IncludedColumns cannot bypass an exclusion set on the same table.
+            if (setupTable.ExcludedColumns != null)
+            {
+                foreach (var name in setupTable.ExcludedColumns)
+                    AddIfMissing(name);
+            }
+
+            return result;
+        }
 
         /// <summary>
         /// Check if two setups have the same local options.
@@ -126,7 +261,19 @@ namespace Dotmim.Sync
             if (!this.Tables.CompareWith(otherSetup.Tables))
                 return false;
 
-            return this.Filters.CompareWith(otherSetup.Filters);
+            if (!this.Filters.CompareWith(otherSetup.Filters))
+                return false;
+
+            var sc = SyncGlobalization.DataSourceStringComparison;
+            var thisExEmpty = this.ExcludedColumns == null || this.ExcludedColumns.Count == 0;
+            var otherExEmpty = otherSetup.ExcludedColumns == null || otherSetup.ExcludedColumns.Count == 0;
+            if (thisExEmpty && otherExEmpty)
+                return true;
+
+            if (thisExEmpty != otherExEmpty)
+                return false;
+
+            return this.ExcludedColumns.CompareWith(otherSetup.ExcludedColumns, (c, oc) => string.Equals(c, oc, sc));
         }
 
         /// <inheritdoc cref="SyncNamedItem{T}.EqualsByProperties(T)" />

@@ -1,11 +1,7 @@
-using Dotmim.Sync;
+﻿using Dotmim.Sync;
 using Dotmim.Sync.DatabaseStringParsers;
 using Dotmim.Sync.Manager;
-#if NET6_0_OR_GREATER
 using MySqlConnector;
-#elif NETSTANDARD
-using MySql.Data.MySqlClient;
-#endif
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -345,14 +341,8 @@ namespace Dotmim.Sync.MySql.Builders
 
             using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
             syncTable.Load(reader);
-
-#if NET6_0_OR_GREATER
             await reader.CloseAsync().ConfigureAwait(false);
-#else
-            reader.Close();
-#endif
-
-            var mySqlDbMetadata = new MySqlDbMetadata();
+var mySqlDbMetadata = new MySqlDbMetadata();
 
             foreach (var c in syncTable.Rows.OrderBy(r => Convert.ToUInt64(r["ordinal_position"])))
             {
@@ -399,13 +389,8 @@ namespace Dotmim.Sync.MySql.Builders
             }
 
             if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                 await connection.CloseAsync().ConfigureAwait(false);
-#else
-                connection.Close();
-#endif
-
-            return [.. columns];
+return [.. columns];
         }
 
         /// <summary>
@@ -439,13 +424,8 @@ namespace Dotmim.Sync.MySql.Builders
             }
 
             if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                 await connection.CloseAsync().ConfigureAwait(false);
-#else
-                connection.Close();
-#endif
-
-            var lstKeys = new List<SyncColumn>();
+var lstKeys = new List<SyncColumn>();
 
             foreach (var key in keys.Rows)
             {
@@ -505,13 +485,8 @@ namespace Dotmim.Sync.MySql.Builders
             }
 
             if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                 await connection.CloseAsync().ConfigureAwait(false);
-#else
-                connection.Close();
-#endif
-
-            if (relationsList.Rows.Count > 0)
+if (relationsList.Rows.Count > 0)
             {
                 foreach (var fk in relationsList.Rows.GroupBy(row =>
                     new { Name = (string)row["ForeignKey"], TableName = (string)row["TableName"], ReferenceTableName = (string)row["ReferenceTableName"] }))

@@ -194,12 +194,8 @@ namespace Dotmim.Sync.Web.Client
             if (this.SerializerFactory.Key != "json" || this.Interceptors.HasInterceptors<HttpGettingResponseMessageArgs>() || this.Converter != null)
             {
                 var webSerializer = this.SerializerFactory.GetSerializer();
-#if NET6_0_OR_GREATER
                 using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-#else
-                using var responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-#endif
-                var getMoreChanges = await webSerializer.DeserializeAsync<HttpMessageSendChangesResponse>(responseStream).ConfigureAwait(false);
+var getMoreChanges = await webSerializer.DeserializeAsync<HttpMessageSendChangesResponse>(responseStream).ConfigureAwait(false);
                 context = getMoreChanges.SyncContext;
 
                 await this.InterceptAsync(

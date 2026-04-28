@@ -269,12 +269,8 @@ namespace Dotmim.Sync
                 {
                     var serializer = SerializersFactory.JsonSerializerFactory.GetSerializer();
                     var bytes = await serializer.SerializeAsync(serverBatchInfo).ConfigureAwait(false);
-#if NET6_0_OR_GREATER
                     await f.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
-#else
-                    await f.WriteAsync(bytes, 0, bytes.Length, cancellationToken).ConfigureAwait(false);
-#endif
-                }
+}
 
                 await this.InterceptAsync(new SnapshotCreatedArgs(context, serverBatchInfo, this.Provider.CreateConnection(), null), progress, cancellationToken).ConfigureAwait(false);
 

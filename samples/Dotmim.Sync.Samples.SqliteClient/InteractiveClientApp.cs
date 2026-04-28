@@ -24,6 +24,12 @@ internal sealed class InteractiveClientApp : IDisposable
 
     public InteractiveClientApp(IConfiguration config, string serviceUrl, string sqlitePath)
     {
+        // Process-wide column exclusions: any column listed here is stripped from EVERY table in EVERY scope/setup
+        // that has one of these column names, without having to repeat the rule on each SetupTable or SyncSetup.
+        // Must run before any SyncSetup is built (i.e. before DemoMenuBuilder.BuildMenuItems below) and the list must
+        // match the server, so both sides produce the same effective schema.
+        SyncSetup.GloballyExcludeColumns("audit_created_at", "audit_updated_at", "audit_tenant_id");
+
         this._config = config;
         this._serviceUrl = serviceUrl;
         this._sqlitePath = sqlitePath;
@@ -57,14 +63,14 @@ internal sealed class InteractiveClientApp : IDisposable
             if (string.Equals(choice, "q", StringComparison.OrdinalIgnoreCase))
                 break;
 
-            if (string.Equals(choice, "4", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(choice, "5", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (var item in this._menu)
                     await RunScopeSyncAsync(this._agent, this._sqlitePath, item, this._progress).ConfigureAwait(false);
                 continue;
             }
 
-            if (string.Equals(choice, "5", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(choice, "6", StringComparison.OrdinalIgnoreCase))
             {
                 await AdvancedLoadTestRunner.RunAsync(
                     this._serviceUrl,
@@ -84,7 +90,7 @@ internal sealed class InteractiveClientApp : IDisposable
             var selected = this._menu.FirstOrDefault(i => string.Equals(i.MenuKey, choice, StringComparison.OrdinalIgnoreCase));
             if (selected == null)
             {
-                Console.WriteLine("Unknown command. Choose 1–5, c (clear client DB), or q.");
+                Console.WriteLine("Unknown command. Choose 1–6, c (clear client DB), or q.");
                 Console.WriteLine();
                 continue;
             }
@@ -143,8 +149,9 @@ internal sealed class InteractiveClientApp : IDisposable
         Console.WriteLine("  1. Sync geometry + integer[] data type demo");
         Console.WriteLine("  2. Sync shadow columns demo");
         Console.WriteLine("  3. Sync excluded column demo");
-        Console.WriteLine("  4. Sync all demos (all scopes)");
-        Console.WriteLine("  5. Advanced load test (parallel clients + multi-round stress)");
+        Console.WriteLine("  4. Sync global-exclude demo (global + setup + per-table Include bypass)");
+        Console.WriteLine("  5. Sync all demos (all scopes)");
+        Console.WriteLine("  6. Advanced load test (parallel clients + multi-round stress)");
         Console.WriteLine("  c. Clear client SQLite database (fresh test)");
         Console.WriteLine("  q. Quit");
         Console.Write("Selection: ");

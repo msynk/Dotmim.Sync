@@ -143,12 +143,8 @@ namespace Dotmim.Sync.Web.Client
                 HttpMessageSummaryResponse summaryResponseContent = null;
 
                 // Deserialize last response incoming from server after uploading changes
-#if NET6_0_OR_GREATER
                 using (var streamResponse = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
-#else
-                using (var streamResponse = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
-#endif
-                {
+{
                     var responseSerializer = this.SerializerFactory.GetSerializer();
                     summaryResponseContent = await responseSerializer.DeserializeAsync<HttpMessageSummaryResponse>(streamResponse).ConfigureAwait(false);
                     context = summaryResponseContent.SyncContext;

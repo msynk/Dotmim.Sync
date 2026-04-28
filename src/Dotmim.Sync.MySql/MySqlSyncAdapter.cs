@@ -1,18 +1,11 @@
-using Dotmim.Sync.Builders;
+﻿using Dotmim.Sync.Builders;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
-#if NET6_0_OR_GREATER
 using Dotmim.Sync.DatabaseStringParsers;
 using MySqlConnector;
 using System.Reflection.Metadata;
-
-#elif NETSTANDARD
-using Dotmim.Sync.DatabaseStringParsers;
-using MySql.Data.MySqlClient;
-
-#endif
 #if MARIADB
 using Dotmim.Sync.MariaDB.Builders;
 #elif MYSQL
@@ -107,13 +100,8 @@ namespace Dotmim.Sync.MySql
                     var p = parameter as DbParameter;
                     if (p.ParameterName.StartsWith("in_"))
                         p.ParameterName = p.ParameterName.Replace("in_", string.Empty);
-
-#if NET6_0_OR_GREATER
                     if (!p.ParameterName.StartsWith('@'))
-#else
-                    if (!p.ParameterName.StartsWith("@"))
-#endif
-                        p.ParameterName = $"@{p.ParameterName}";
+p.ParameterName = $"@{p.ParameterName}";
                 }
             }
 

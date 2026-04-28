@@ -3,13 +3,7 @@ using Dotmim.Sync.DatabaseStringParsers;
 using System.Data;
 using System.Data.Common;
 using System.Text;
-
-#if NET6_0_OR_GREATER
 using MySqlConnector;
-#elif NETSTANDARD
-using MySql.Data.MySqlClient;
-#endif
-
 #if MARIADB
 namespace Dotmim.Sync.MariaDB.Builders
 #elif MYSQL

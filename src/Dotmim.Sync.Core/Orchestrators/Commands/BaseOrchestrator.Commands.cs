@@ -141,13 +141,8 @@ namespace Dotmim.Sync
                 return (command, isBatch);
 
             // Testing The Prepare() performance increase
-#if NET6_0_OR_GREATER
             await command.PrepareAsync(cancellationToken).ConfigureAwait(false);
-#else
-            command.Prepare();
-#endif
-
-            // Adding this command as prepared
+// Adding this command as prepared
             lazyCommand.Value.IsPrepared = true;
 
             preparedCommands.AddOrUpdate(commandKey, lazyCommand, (key, lc) => new Lazy<SyncPreparedCommand>(() => lc.Value));

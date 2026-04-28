@@ -227,10 +227,8 @@ namespace Dotmim.Sync
                 return "19";
             else if (valueType == typeof(char[]))
                 return "20";
-#if NET6_0_OR_GREATER
             else if (valueType == typeof(DateOnly))
                 return "21";
-#endif
             else if (valueType == typeof(object))
                 return "-1";
 
@@ -493,9 +491,7 @@ namespace Dotmim.Sync
             // test to add object type
             StorageClassType.Add(typeof(object), false);
 
-#if NET6_0_OR_GREATER
             StorageClassType.Add(typeof(DateOnly), true);
-#endif
         }
 
         /// <summary>
@@ -544,11 +540,7 @@ namespace Dotmim.Sync
             else if (valueType == "20")
                 return typeof(char[]);
             else if (valueType == "21")
-#if NET6_0_OR_GREATER
                 return typeof(DateOnly);
-#else
-                return typeof(DateTime);
-#endif
             else if (valueType == "-1")
                 return typeof(object);
 

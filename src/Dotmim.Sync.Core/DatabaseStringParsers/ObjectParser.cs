@@ -112,12 +112,8 @@ namespace Dotmim.Sync.DatabaseStringParsers
                 var cat = CharUnicodeInfo.GetUnicodeCategory(ch);
                 if (cat == UnicodeCategory.NonSpacingMark)
                     continue;
-#if NETSTANDARD2_0
-                if (char.IsWhiteSpace(ch) || specialChars.IndexOf(ch) >= 0)
-#elif NET6_0_OR_GREATER
                 if (char.IsWhiteSpace(ch) || specialChars.Contains(ch))
-#endif
-                {
+{
                     buffer[idx++] = '_';
                 }
                 else

@@ -202,14 +202,8 @@ namespace Dotmim.Sync
 
                     if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                         scopeInfoClient = InternalReadScopeInfoClient(reader);
-
-#if NET6_0_OR_GREATER
                     await reader.CloseAsync().ConfigureAwait(false);
-#else
-                    reader.Close();
-#endif
-
-                    command.Dispose();
+command.Dispose();
 
                     return (context, scopeInfoClient);
                 }
@@ -249,12 +243,8 @@ namespace Dotmim.Sync
 
                         scopeInfoClients.Add(scopeInfoClient);
                     }
-#if NET6_0_OR_GREATER
                     await reader.CloseAsync().ConfigureAwait(false);
-#else
-                    reader.Close();
-#endif
-                    command.Dispose();
+command.Dispose();
                     return scopeInfoClients;
                 }
             }
@@ -311,14 +301,8 @@ namespace Dotmim.Sync
                     await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
 
                     var newScopeInfoClient = InternalReadScopeInfoClient(reader);
-
-#if NET6_0_OR_GREATER
                     await reader.CloseAsync().ConfigureAwait(false);
-#else
-                    reader.Close();
-#endif
-
-                    // await this.InterceptAsync(new ScopeSavedArgs(context, scopeBuilder.ScopeInfoTableName.ToString(), newScopeInfoClient, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
+// await this.InterceptAsync(new ScopeSavedArgs(context, scopeBuilder.ScopeInfoTableName.ToString(), newScopeInfoClient, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
                     // command.Dispose();
                     return (context, newScopeInfoClient);
                 }

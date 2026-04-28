@@ -52,7 +52,6 @@ namespace Dotmim.Sync
             {
                 return Convert.ToUInt64(value);
             }
-#if NET6_0_OR_GREATER
             else if (typeOfT == typeof(DateOnly))
             {
                 if (value is DateTimeOffset dateTimeOffset)
@@ -66,8 +65,6 @@ namespace Dotmim.Sync
                 else
                     return (T)Convert.ChangeType(DateOnly.FromDateTime(Convert.ToDateTime(value)), typeOfT, provider);
             }
-
-#endif
             else if (typeOfT == typeof(DateTime))
             {
                 if (value is DateTimeOffset dateTimeOffset)
@@ -190,10 +187,8 @@ namespace Dotmim.Sync
                 return TryConvertTo<ulong>(value, provider);
             else if (typeOfT == typeof(DateTime))
                 return TryConvertTo<DateTime>(value, provider);
-#if NET6_0_OR_GREATER
             else if (typeOfT == typeof(DateOnly))
                 return TryConvertTo<DateOnly>(value, provider);
-#endif
             else if (typeOfT == typeof(DateTimeOffset))
                 return TryConvertTo<DateTimeOffset>(value, provider);
             else if (typeOfT == typeof(string))
@@ -244,11 +239,7 @@ namespace Dotmim.Sync
             else if (typeOfT == DbType.Currency || typeOfT == DbType.Decimal)
                 return TryConvertTo<decimal>(value, provider);
             else if (typeOfT == DbType.Date)
-#if NET6_0_OR_GREATER
                 return TryConvertTo<DateOnly>(value, provider);
-#else
-                return TryConvertTo<DateTime>(value, provider);
-#endif
             else if (typeOfT == DbType.DateTime || typeOfT == DbType.DateTime2)
                 return TryConvertTo<DateTime>(value, provider);
             else if (typeOfT == DbType.DateTimeOffset)

@@ -15,16 +15,9 @@ namespace Dotmim.Sync.Sqlite
         public override DbType GetDbType(SyncColumn columnDefinition)
         {
             var typeName = columnDefinition.OriginalTypeName.ToLowerInvariant();
-
-#if NET6_0_OR_GREATER
             if (typeName.Contains('(', SyncGlobalization.DataSourceStringComparison))
                 typeName = typeName[..typeName.IndexOf("(", SyncGlobalization.DataSourceStringComparison)];
-#else
-            if (typeName.Contains("("))
-                typeName = typeName.Substring(0, typeName.IndexOf("(", SyncGlobalization.DataSourceStringComparison));
-#endif
-
-            return typeName.ToLowerInvariant() switch
+return typeName.ToLowerInvariant() switch
             {
                 "bit" => DbType.Boolean,
                 "integer" or "bigint" or "smallint" => DbType.Int64,
@@ -42,15 +35,9 @@ namespace Dotmim.Sync.Sqlite
         public override object GetOwnerDbType(SyncColumn columnDefinition)
         {
             var typeName = columnDefinition.OriginalTypeName.ToLowerInvariant();
-
-#if NET6_0_OR_GREATER
             if (typeName.Contains('(', SyncGlobalization.DataSourceStringComparison))
                 typeName = typeName[..typeName.IndexOf("(", SyncGlobalization.DataSourceStringComparison)];
-#else
-            if (typeName.Contains("("))
-                typeName = typeName.Substring(0, typeName.IndexOf("(", SyncGlobalization.DataSourceStringComparison));
-#endif
-            return typeName.ToLowerInvariant() switch
+return typeName.ToLowerInvariant() switch
             {
                 "bit" or "integer" or "bigint" or "smallint" => SqliteType.Integer,
                 "numeric" or "decimal" or "real" or "float" => SqliteType.Real,
@@ -134,15 +121,9 @@ namespace Dotmim.Sync.Sqlite
         public override bool IsValid(SyncColumn columnDefinition)
         {
             var typeName = columnDefinition.OriginalTypeName.ToLowerInvariant();
-#if NET6_0_OR_GREATER
             if (typeName.Contains('(', SyncGlobalization.DataSourceStringComparison))
                 typeName = typeName[..typeName.IndexOf("(", SyncGlobalization.DataSourceStringComparison)];
-#else
-            if (typeName.Contains("("))
-                typeName = typeName.Substring(0, typeName.IndexOf("(", SyncGlobalization.DataSourceStringComparison));
-
-#endif
-            return typeName switch
+return typeName switch
             {
                 "integer" or "float" or "decimal" or "bit" or "bigint" or "numeric" or "blob" or "image" or
                 "datetime" or "time" or "text" or "varchar" or "real" or "smallint" => true,

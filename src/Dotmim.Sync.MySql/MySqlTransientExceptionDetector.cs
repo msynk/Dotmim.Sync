@@ -1,9 +1,4 @@
-﻿#if NET6_0_OR_GREATER
-using MySqlConnector;
-#elif NETSTANDARD
-using MySql.Data.MySqlClient;
-#endif
-
+﻿using MySqlConnector;
 #if MARIADB
 namespace Dotmim.Sync.MariaDB
 #elif MYSQL

@@ -11,10 +11,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
-#if NET8_0_OR_GREATER
 using Microsoft.Net.Http.Headers;
-#endif
 
 namespace Dotmim.Sync.Web.Client
 {
@@ -188,12 +185,7 @@ namespace Dotmim.Sync.Web.Client
                 T messageResponse = default;
                 var serializer = this.SerializerFactory.GetSerializer();
 
-#if NET6_0_OR_GREATER
                 streamResponse = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-#else
-                streamResponse = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-#endif
-
                 if (streamResponse.CanRead)
                     messageResponse = await serializer.DeserializeAsync<T>(streamResponse).ConfigureAwait(false);
 
@@ -227,12 +219,8 @@ namespace Dotmim.Sync.Web.Client
             }
             finally
             {
-#if NET6_0_OR_GREATER
                 if (streamResponse != null)
                     await streamResponse.DisposeAsync().ConfigureAwait(false);
-#else
-                streamResponse?.Dispose();
-#endif
                 response?.Dispose();
             }
         }
@@ -411,12 +399,7 @@ namespace Dotmim.Sync.Web.Client
             var requestUri = new StringBuilder();
             var baseUriString = baseUri.AbsoluteUri;
             requestUri.Append(baseUri.AbsoluteUri);
-#if NET6_0_OR_GREATER
             requestUri.Append(baseUriString.EndsWith('/') ? string.Empty : "/");
-#else
-            requestUri.Append(baseUriString.EndsWith("/", StringComparison.CurrentCultureIgnoreCase) ? string.Empty : "/");
-#endif
-
             // Add params if any
             if (this.scopeParameters != null && this.scopeParameters.Count > 0)
             {

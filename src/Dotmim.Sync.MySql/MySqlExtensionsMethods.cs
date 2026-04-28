@@ -1,11 +1,5 @@
 ﻿using System;
-#if NET6_0_OR_GREATER
 using MySqlConnector;
-
-#elif NETSTANDARD
-using MySql.Data.MySqlClient;
-#endif
-
 #if MARIADB
 using Dotmim.Sync.MariaDB.Builders;
 #elif MYSQL

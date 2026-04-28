@@ -7,9 +7,22 @@ internal static class SyncSampleConstants
     public const string ShadowScope = "shadow-scope";
     public const string ExcludeScope = "exclude-scope";
     public const string LoadTestScope = "load-test-scope";
+    public const string GlobalExcludeScope = "global-exclude-scope";
 
     public const string GeometryArrayTable = "demo_geo_points";
     public const string ShadowTable = "demo_audit_events";
     public const string ExcludeTable = "demo_customers";
     public const string LoadTestTable = "demo_load_orders";
+
+    public const string GlobalAuditTable = "demo_audit_products";
+    public const string GlobalAuditFeaturedTable = "demo_audit_products_featured";
+
+    /// <summary>Scope-level excluded column applied to every table in the global-exclude demo setup.</summary>
+    public const string ScopeLevelExcludedColumn = "internal_notes";
+
+    /// <summary>
+    /// Column re-added on the "featured" table via <see cref="SetupTable.IncludeColumn(string)"/> even though it
+    /// is registered in <see cref="SyncSetup.GlobalExcludedColumns"/>.
+    /// </summary>
+    public const string FeaturedIncludedColumn = "audit_updated_at";
 }

@@ -1,4 +1,4 @@
-using Dotmim.Sync.DatabaseStringParsers;
+﻿using Dotmim.Sync.DatabaseStringParsers;
 using Dotmim.Sync.SqlServer.Builders;
 using Microsoft.Data.SqlClient;
 using System.Collections.Generic;
@@ -55,12 +55,8 @@ namespace Dotmim.Sync.SqlServer
                 }
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return syncSetup;
         }
@@ -96,12 +92,8 @@ namespace Dotmim.Sync.SqlServer
                     syncTable.Load(reader);
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return syncTable;
         }
@@ -129,13 +121,8 @@ namespace Dotmim.Sync.SqlServer
                 syncTable.Load(reader);
 
             if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                 await connection.CloseAsync().ConfigureAwait(false);
-#else
-                connection.Close();
-#endif
-
-            return syncTable;
+return syncTable;
         }
 
         /// <summary>
@@ -160,12 +147,8 @@ namespace Dotmim.Sync.SqlServer
             await sqlCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
 
             if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                 await connection.CloseAsync().ConfigureAwait(false);
-#else
-                connection.Close();
-#endif
-        }
+}
 
         /// <summary>
         /// Get Table.
@@ -197,12 +180,8 @@ namespace Dotmim.Sync.SqlServer
                     syncTable.Load(reader);
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return syncTable;
         }
@@ -252,12 +231,8 @@ namespace Dotmim.Sync.SqlServer
                     syncTable.Load(reader);
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return syncTable;
         }
@@ -296,12 +271,8 @@ namespace Dotmim.Sync.SqlServer
                     syncTable.Load(reader);
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return syncTable;
         }
@@ -346,12 +317,8 @@ namespace Dotmim.Sync.SqlServer
                     syncTable.Load(reader);
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return syncTable;
         }
@@ -384,12 +351,8 @@ namespace Dotmim.Sync.SqlServer
             await sqlCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
 
             if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                 await connection.CloseAsync().ConfigureAwait(false);
-#else
-                connection.Close();
-#endif
-        }
+}
 
         /// <summary>
         /// Gets the quoted table schema. if empty, return dbo.
@@ -429,12 +392,8 @@ namespace Dotmim.Sync.SqlServer
                 flag = (int)result != 0;
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return flag;
         }
@@ -477,12 +436,8 @@ namespace Dotmim.Sync.SqlServer
                 }
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return (dbName, dbVersion);
         }
@@ -517,12 +472,8 @@ namespace Dotmim.Sync.SqlServer
                 tableExist = (int)result != 0;
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return tableExist;
         }
@@ -552,12 +503,8 @@ namespace Dotmim.Sync.SqlServer
                 flag = (int)result != 0;
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return flag;
         }
@@ -599,13 +546,8 @@ namespace Dotmim.Sync.SqlServer
             var tableExist = (int)result != 0;
 
             if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                 await connection.CloseAsync().ConfigureAwait(false);
-#else
-                connection.Close();
-#endif
-
-            return tableExist;
+return tableExist;
         }
 
         /// <summary>

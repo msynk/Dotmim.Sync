@@ -249,13 +249,7 @@ namespace Dotmim.Sync.Serialization
         {
             if (this.TokenType != JsonTokenType.PropertyName && this.TokenType != JsonTokenType.String)
                 return null;
-
-#if NET6_0_OR_GREATER
             var str = Utf8Encoding.GetString(this.Value.Span);
-#else
-            var str = Utf8Encoding.GetString(this.Value.ToArray());
-#endif
-
             return Regex.Unescape(str);
         }
 
@@ -269,12 +263,7 @@ namespace Dotmim.Sync.Serialization
                 value = string.Empty;
                 return false;
             }
-#if NET6_0_OR_GREATER
             var str = Utf8Encoding.GetString(this.Value.Span);
-#else
-            var str = Utf8Encoding.GetString(this.Value.ToArray());
-#endif
-
             value = Regex.Unescape(str);
             return true;
         }
@@ -295,13 +284,7 @@ namespace Dotmim.Sync.Serialization
         {
             if (this.TokenType != JsonTokenType.PropertyName && this.TokenType != JsonTokenType.String)
                 return null;
-
-#if NET6_0_OR_GREATER
             var str = Utf8Encoding.GetString(this.Value.Span);
-#else
-            var str = Utf8Encoding.GetString(this.Value.ToArray());
-#endif
-
             return str;
         }
 
@@ -315,13 +298,7 @@ namespace Dotmim.Sync.Serialization
                 value = string.Empty;
                 return false;
             }
-
-#if NET6_0_OR_GREATER
             var str = Utf8Encoding.GetString(this.Value.Span);
-#else
-            var str = Utf8Encoding.GetString(this.Value.ToArray());
-#endif
-
             value = str;
             return true;
         }
@@ -844,8 +821,6 @@ namespace Dotmim.Sync.Serialization
         {
             if (this.TokenType != JsonTokenType.PropertyName && this.TokenType != JsonTokenType.String)
                 return null;
-
-#if NET6_0_OR_GREATER
             var str = Utf8Encoding.GetString(this.Value.Span);
             const int bitsEncodedPerChar = 6;
             var bytesExpected = (str.Length * bitsEncodedPerChar) >> 3; // divide by 8 bits in a byte
@@ -860,10 +835,6 @@ namespace Dotmim.Sync.Serialization
             }
 
             return null;
-#else
-            var str = Utf8Encoding.GetString(this.Value.ToArray());
-            return Convert.FromBase64String(str);
-#endif
         }
 
         /// <summary>
@@ -876,8 +847,6 @@ namespace Dotmim.Sync.Serialization
                 value = null;
                 return false;
             }
-
-#if NET6_0_OR_GREATER
             var str = Utf8Encoding.GetString(this.Value.Span);
             const int bitsEncodedPerChar = 6;
             var bytesExpected = (str.Length * bitsEncodedPerChar) >> 3; // divide by 8 bits in a byte
@@ -893,23 +862,7 @@ namespace Dotmim.Sync.Serialization
 
             value = null;
             return false;
-#else
-            var str = Utf8Encoding.GetString(this.Value.ToArray());
-            try
-            {
-                value = Convert.FromBase64String(str);
-                return true;
-            }
-            catch (Exception)
-            {
-                value = null;
-                return false;
-            }
-#endif
         }
-
-#if NET6_0_OR_GREATER
-
         /// <summary>
         /// Read the next token as a base 64 string and convert the value as a byte array.
         /// </summary>
@@ -935,8 +888,6 @@ namespace Dotmim.Sync.Serialization
 
             return Convert.TryFromBase64String(str, buffer, out var bytesWritten) ? buffer.AsSpan(0, bytesWritten) : (Span<byte>)null;
         }
-#endif
-
         /// <summary>
         /// Dispose the reader.
         /// </summary>
@@ -958,11 +909,7 @@ namespace Dotmim.Sync.Serialization
                 {
                     if (this.buffer != null)
                     {
-#if NET6_0_OR_GREATER
                         Array.Clear(this.buffer);
-#else
-                        Array.Clear(this.buffer, 0, this.buffer.Length);
-#endif
                         this.buffer = null;
                     }
                 }

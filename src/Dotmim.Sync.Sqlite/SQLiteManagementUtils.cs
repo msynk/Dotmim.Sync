@@ -51,12 +51,8 @@ namespace Dotmim.Sync.Sqlite
                 }
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return syncSetup;
         }
@@ -83,13 +79,8 @@ namespace Dotmim.Sync.Sqlite
                 syncTable.Load(reader);
 
             if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                 await connection.CloseAsync().ConfigureAwait(false);
-#else
-                connection.Close();
-#endif
-
-            return syncTable;
+return syncTable;
         }
 
         /// <summary>
@@ -111,12 +102,8 @@ namespace Dotmim.Sync.Sqlite
             await sqlCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
 
             if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                 await connection.CloseAsync().ConfigureAwait(false);
-#else
-                connection.Close();
-#endif
-        }
+}
 
         /// <summary>
         /// Get all columns for a table.
@@ -141,12 +128,8 @@ namespace Dotmim.Sync.Sqlite
                 }
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return syncTable;
         }
@@ -175,13 +158,8 @@ namespace Dotmim.Sync.Sqlite
             }
 
             if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                 await connection.CloseAsync().ConfigureAwait(false);
-#else
-                connection.Close();
-#endif
-
-            return syncTable;
+return syncTable;
         }
 
         /// <summary>
@@ -207,12 +185,8 @@ namespace Dotmim.Sync.Sqlite
                 }
 
                 if (!alreadyOpened)
-#if NET6_0_OR_GREATER
                     await connection.CloseAsync().ConfigureAwait(false);
-#else
-                    connection.Close();
-#endif
-            }
+}
 
             return syncTable;
         }

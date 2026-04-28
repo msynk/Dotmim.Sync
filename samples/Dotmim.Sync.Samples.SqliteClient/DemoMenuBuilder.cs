@@ -19,6 +19,17 @@ internal static class DemoMenuBuilder
         excludeSetup.Tables[SyncSampleConstants.ExcludeTable]
             .ExcludeColumns("secret_note");
 
+        // Mirrors the server-side scope defined in SampleScopeRegistry for the global-exclude demo:
+        //   - GlobalExcludedColumns (registered at startup) strips the audit_* columns across every scope.
+        //   - syncSetup.ExcludeColumn("internal_notes") applies to every table in this setup.
+        //   - IncludeColumn("audit_updated_at") on the "featured" table bypasses the global rule for that table only.
+        var globalExcludeSetup = new SyncSetup(
+            SyncSampleConstants.GlobalAuditTable,
+            SyncSampleConstants.GlobalAuditFeaturedTable);
+        globalExcludeSetup.ExcludeColumn(SyncSampleConstants.ScopeLevelExcludedColumn);
+        globalExcludeSetup.Tables[SyncSampleConstants.GlobalAuditFeaturedTable]
+            .IncludeColumn(SyncSampleConstants.FeaturedIncludedColumn);
+
         return
         [
             new MenuScope(
@@ -39,6 +50,12 @@ internal static class DemoMenuBuilder
                 SyncSampleConstants.ExcludeScope,
                 excludeSetup,
                 ClientSqliteRowPrinter.PrintExcludedRowsAsync),
+            new MenuScope(
+                "4",
+                "Sync global-exclude demo (global + setup + per-table Include bypass)",
+                SyncSampleConstants.GlobalExcludeScope,
+                globalExcludeSetup,
+                ClientSqliteRowPrinter.PrintGlobalExcludeRowsAsync),
         ];
     }
 }

@@ -1,4 +1,4 @@
-using Dotmim.Sync.Batch;
+﻿using Dotmim.Sync.Batch;
 using Dotmim.Sync.Enumerations;
 using Dotmim.Sync.Extensions;
 using Dotmim.Sync.Serialization;
@@ -287,17 +287,10 @@ namespace Dotmim.Sync.Web.Server
 
                 // Copty stream to a readable and seekable stream
                 // HttpRequest.Body is a HttpRequestStream that is readable but can't be Seek
-#if NET6_0_OR_GREATER
                 await httpRequest.Body.CopyToAsync(readableStream, cancellationToken).ConfigureAwait(false);
                 httpRequest.Body.Close();
                 await httpRequest.Body.DisposeAsync().ConfigureAwait(false);
-#else
-                await httpRequest.Body.CopyToAsync(readableStream).ConfigureAwait(false);
-                httpRequest.Body.Close();
-                httpRequest.Body.Dispose();
-#endif
-
-                // if Hash is present in header, check hash
+// if Hash is present in header, check hash
                 if (TryGetHeaderValue(httpContext.Request.Headers, "dotmim-sync-hash", out string hashStringRequest))
                     HashAlgorithm.SHA256.EnsureHash(readableStream, hashStringRequest);
                 else
@@ -471,14 +464,8 @@ namespace Dotmim.Sync.Web.Server
 
                 // data to send back, as the response
                 byte[] data = this.EnsureCompression(httpRequest, httpResponse, binaryData);
-
-#if NET6_0_OR_GREATER
                 await httpResponse.Body.WriteAsync(data.AsMemory(0, data.Length), cancellationToken).ConfigureAwait(false);
-#else
-                await httpResponse.Body.WriteAsync(data, 0, data.Length, cancellationToken).ConfigureAwait(false);
-#endif
-
-            }
+}
             catch (Exception ex)
             {
                 await this.WriteExceptionAsync(httpRequest, httpResponse, ex).ConfigureAwait(false);
@@ -487,13 +474,8 @@ namespace Dotmim.Sync.Web.Server
             {
                 await readableStream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 readableStream.Close();
-#if NET6_0_OR_GREATER
                 await readableStream.DisposeAsync().ConfigureAwait(false);
-#else
-                readableStream.Dispose();
-
-#endif
-            }
+}
         }
 
         /// <summary>
@@ -555,12 +537,8 @@ namespace Dotmim.Sync.Web.Server
             httpResponse.Headers.Append("dotmim-sync-error", syncException.TypeName);
             httpResponse.StatusCode = StatusCodes.Status400BadRequest;
             httpResponse.ContentLength = compressedData.Length;
-#if NET6_0_OR_GREATER
             await httpResponse.Body.WriteAsync(compressedData).ConfigureAwait(false);
-#else
-            await httpResponse.Body.WriteAsync(compressedData, 0, compressedData.Length).ConfigureAwait(false);
-#endif
-        }
+}
 
         /// <summary>
         /// Write server debug information.
@@ -954,7 +932,7 @@ namespace Dotmim.Sync.Web.Server
             // we do not need client batch info now
             sessionCache.ClientBatchInfo = null;
 
-            // Retro compatiblité to version < 0.9.3
+            // Retro compatiblity to version < 0.9.3
             if (serverSyncChanges.ServerBatchInfo.BatchPartsInfo == null)
                 serverSyncChanges.ServerBatchInfo.BatchPartsInfo = [];
 
