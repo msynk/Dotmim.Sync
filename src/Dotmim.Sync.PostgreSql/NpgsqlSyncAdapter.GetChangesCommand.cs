@@ -43,9 +43,8 @@ namespace Dotmim.Sync.PostgreSql
             {
                 var columnParser = new ObjectParser(mutableColumn.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
 
-                // Geometric/GIS types need to be cast to text for transport, since Npgsql
-                // doesn't have a built-in handler for PostGIS types without the NTS plugin.
-                if (NpgsqlDbMetadata.IsGeometricType(mutableColumn))
+                // Geometric/GIS types and array types need to be cast to text for transport.
+                if (NpgsqlDbMetadata.IsGeometricType(mutableColumn) || NpgsqlDbMetadata.IsArrayType(mutableColumn))
                     stringBuilder.AppendLine($"\tbase.{columnParser.QuotedShortName}::text as {columnParser.QuotedShortName}, ");
                 else
                     stringBuilder.AppendLine($"\tbase.{columnParser.QuotedShortName}, ");
@@ -129,8 +128,8 @@ namespace Dotmim.Sync.PostgreSql
             {
                 var columnPaser = new ObjectParser(mutableColumn.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
 
-                // Geometric/GIS types need to be cast to text for transport
-                if (NpgsqlDbMetadata.IsGeometricType(mutableColumn))
+                // Geometric/GIS types and array types need to be cast to text for transport
+                if (NpgsqlDbMetadata.IsGeometricType(mutableColumn) || NpgsqlDbMetadata.IsArrayType(mutableColumn))
                     stringBuilder.AppendLine($"\t{comma}base.{columnPaser.QuotedShortName}::text as {columnPaser.QuotedShortName}");
                 else
                     stringBuilder.AppendLine($"\t{comma}base.{columnPaser.QuotedShortName}");
@@ -194,7 +193,7 @@ namespace Dotmim.Sync.PostgreSql
 
                 if (isPrimaryKey)
                     stringBuilder.AppendLine($"\t{comma}side.{columnParser.QuotedShortName}");
-                else if (NpgsqlDbMetadata.IsGeometricType(mutableColumn))
+                else if (NpgsqlDbMetadata.IsGeometricType(mutableColumn) || NpgsqlDbMetadata.IsArrayType(mutableColumn))
                     stringBuilder.AppendLine($"\t{comma}base.{columnParser.QuotedShortName}::text as {columnParser.QuotedShortName}");
                 else
                     stringBuilder.AppendLine($"\t{comma}base.{columnParser.QuotedShortName}");

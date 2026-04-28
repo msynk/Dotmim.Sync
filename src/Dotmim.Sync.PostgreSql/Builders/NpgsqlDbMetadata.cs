@@ -37,6 +37,16 @@ namespace Dotmim.Sync.PostgreSql.Builders
         }
 
         /// <summary>
+        /// Returns true if the column type is a PostgreSQL array type.
+        /// Array types use the underscore prefix convention in udt_name (e.g. _int4 for integer[]).
+        /// </summary>
+        public static bool IsArrayType(SyncColumn column)
+        {
+            var typeName = column.OriginalTypeName;
+            return typeName != null && typeName.Length > 1 && typeName[0] == '_';
+        }
+
+        /// <summary>
         /// Coerces the precision and scale of a column.
         /// </summary>
         public static (byte Precision, byte Scale) CoercePrecisionAndScale(int precision, int scale)
@@ -112,6 +122,10 @@ namespace Dotmim.Sync.PostgreSql.Builders
         /// </summary>
         public string GetCompatibleColumnTypeDeclarationString(SyncColumn column, string fromProviderType)
         {
+            // Array types: convert internal name (_int4) to SQL array syntax (int4[])
+            if (IsArrayType(column) && fromProviderType == NpgsqlSyncProvider.ProviderType)
+                return column.OriginalTypeName.Substring(1).ToLowerInvariant() + "[]";
+
             string argument = string.Empty;
 
             // We get the sql db type from the original provider otherwise fallback on sql db type extract from simple db type
@@ -162,52 +176,60 @@ namespace Dotmim.Sync.PostgreSql.Builders
         }
 
         /// <inheritdoc/>
-        public override DbType GetDbType(SyncColumn columnDefinition) => columnDefinition.OriginalTypeName.ToLowerInvariant() switch
+        public override DbType GetDbType(SyncColumn columnDefinition)
         {
-            "smallint" or "int2" or "int2vector" or "smallserial" or "serial2" => DbType.Int16,
-            "integer" or "int" or "int4" or "serial" or "serial4" => DbType.Int32,
-            "bigint" or "int8" or "bigserial" or "serial8" => DbType.Int64,
+            if (IsArrayType(columnDefinition))
+                return DbType.String;
 
-            // Bit strings are strings of 1's and 0's.They can be used to store or visualize bit masks.
-            // https://www.postgresql.org/docs/current/datatype-bit.html
-            "bit" => DbType.Boolean,
-            "varbit" or "bit varying" => DbType.String,
-            "boolean" or "bool" => DbType.Boolean,
+            return columnDefinition.OriginalTypeName.ToLowerInvariant() switch
+            {
+                "smallint" or "int2" or "int2vector" or "smallserial" or "serial2" => DbType.Int16,
+                "integer" or "int" or "int4" or "serial" or "serial4" => DbType.Int32,
+                "bigint" or "int8" or "bigserial" or "serial8" => DbType.Int64,
 
-            // IPv4, IPv6, and MAC addresses
-            // https://www.postgresql.org/docs/current/datatype-net-types.html
-            "cid" or "cidr" or "inet" or "macaddr" or "macaddr8" => DbType.String,
+                // Bit strings are strings of 1's and 0's.They can be used to store or visualize bit masks.
+                // https://www.postgresql.org/docs/current/datatype-bit.html
+                "bit" => DbType.Boolean,
+                "varbit" or "bit varying" => DbType.String,
+                "boolean" or "bool" => DbType.Boolean,
 
-            // Full text search text
-            // https://www.postgresql.org/docs/current/datatype-textsearch.html
-            "tsquery" or "tsvector" => DbType.String,
+                // IPv4, IPv6, and MAC addresses
+                // https://www.postgresql.org/docs/current/datatype-net-types.html
+                "cid" or "cidr" or "inet" or "macaddr" or "macaddr8" => DbType.String,
 
-            // Geometry (native PostgreSQL geometric types + PostGIS types)
-            "geometry" or "geography" or "box" or "circle" or "line" or "lseg" or "path" or "polygon" or "point" => DbType.String,
-            "bytea" => DbType.Binary,
-            "character" or "char" or "name" or "bpchar" => DbType.AnsiStringFixedLength,
-            "varchar" or "character varying" or "refcursor" or "citext" or "text" => DbType.AnsiString,
-            "date" => DbType.Date,
-            "timestamp" or "timestamp without time zone" => DbType.DateTime2,
-            "timestamptz" or "timestamp with time zone" or "timetz" or "time with time zone" => DbType.DateTimeOffset,
-            "time" or "time without time zone" => DbType.Time,
-            "double precision" or "float8" => DbType.Double,
+                // Full text search text
+                // https://www.postgresql.org/docs/current/datatype-textsearch.html
+                "tsquery" or "tsvector" => DbType.String,
 
-            // https://www.postgresql.org/docs/current/hstore.html
-            "hstore" => DbType.String,
-            "json" or "jsonb" => DbType.String,
-            "money" => DbType.Currency,
-            "numeric" => DbType.VarNumeric,
-            "float4" or "real" => DbType.Decimal,
-            "uuid" => DbType.Guid,
-            "xml" => DbType.String,
-            "array" => DbType.Object,
-            _ => throw new Exception($"this type {columnDefinition.OriginalTypeName.ToLowerInvariant()} is not supported"),
-        };
+                // Geometry (native PostgreSQL geometric types + PostGIS types)
+                "geometry" or "geography" or "box" or "circle" or "line" or "lseg" or "path" or "polygon" or "point" => DbType.String,
+                "bytea" => DbType.Binary,
+                "character" or "char" or "name" or "bpchar" => DbType.AnsiStringFixedLength,
+                "varchar" or "character varying" or "refcursor" or "citext" or "text" => DbType.AnsiString,
+                "date" => DbType.Date,
+                "timestamp" or "timestamp without time zone" => DbType.DateTime2,
+                "timestamptz" or "timestamp with time zone" or "timetz" or "time with time zone" => DbType.DateTimeOffset,
+                "time" or "time without time zone" => DbType.Time,
+                "double precision" or "float8" => DbType.Double,
+
+                // https://www.postgresql.org/docs/current/hstore.html
+                "hstore" => DbType.String,
+                "json" or "jsonb" => DbType.String,
+                "money" => DbType.Currency,
+                "numeric" => DbType.VarNumeric,
+                "float4" or "real" => DbType.Decimal,
+                "uuid" => DbType.Guid,
+                "xml" => DbType.String,
+                _ => throw new Exception($"this type {columnDefinition.OriginalTypeName.ToLowerInvariant()} is not supported"),
+            };
+        }
 
         /// <inheritdoc/>
         public override int GetMaxLength(SyncColumn columnDefinition)
         {
+            if (IsArrayType(columnDefinition))
+                return 0;
+
             var sqlDbType = this.GetNpgsqlDbType(columnDefinition);
 
             var iMaxLength = columnDefinition.MaxLength > 8000 ? 8000 : Convert.ToInt32(columnDefinition.MaxLength);
@@ -224,8 +246,10 @@ namespace Dotmim.Sync.PostgreSql.Builders
         /// </summary>
         public NpgsqlDbType GetNpgsqlDbType(SyncColumn column) => (NpgsqlDbType)this.GetOwnerDbType(column);
 
-        /// <inheritdoc/>
-        public override object GetOwnerDbType(SyncColumn columnDefinition) => columnDefinition.OriginalTypeName.ToLowerInvariant() switch
+        /// <summary>
+        /// Maps a scalar (non-array) PostgreSQL type name to its NpgsqlDbType, or null if unsupported.
+        /// </summary>
+        private static NpgsqlDbType? TryGetScalarNpgsqlDbType(string typeName) => typeName switch
         {
             "bigint" or "int8" => NpgsqlDbType.Bigint,
             "bit" => NpgsqlDbType.Bit,
@@ -279,9 +303,29 @@ namespace Dotmim.Sync.PostgreSql.Builders
             "varbit" => NpgsqlDbType.Varbit,
             "varchar" or "character varying" => NpgsqlDbType.Varchar,
             "xid" => NpgsqlDbType.Xid,
-            "xml" => (object)NpgsqlDbType.Xml,
-            _ => throw new Exception($"Type '{columnDefinition.OriginalTypeName.ToLowerInvariant()}' (column {columnDefinition.ColumnName}) is not supported"),
+            "xml" => NpgsqlDbType.Xml,
+            _ => null,
         };
+
+        /// <inheritdoc/>
+        public override object GetOwnerDbType(SyncColumn columnDefinition)
+        {
+            var typeName = columnDefinition.OriginalTypeName.ToLowerInvariant();
+
+            if (IsArrayType(columnDefinition))
+            {
+                var elementTypeName = typeName.Substring(1);
+                var elementType = TryGetScalarNpgsqlDbType(elementTypeName);
+                if (!elementType.HasValue)
+                    throw new Exception($"Array element type '{elementTypeName}' (column {columnDefinition.ColumnName}) is not supported");
+                return NpgsqlDbType.Array | elementType.Value;
+            }
+
+            var scalarType = TryGetScalarNpgsqlDbType(typeName);
+            if (!scalarType.HasValue)
+                throw new Exception($"Type '{typeName}' (column {columnDefinition.ColumnName}) is not supported");
+            return scalarType.Value;
+        }
 
         /// <inheritdoc/>
         public override byte GetPrecision(SyncColumn columnDefinition)
@@ -298,34 +342,40 @@ namespace Dotmim.Sync.PostgreSql.Builders
                 : CoercePrecisionAndScale(columnDefinition.Precision, columnDefinition.Scale);
 
         /// <inheritdoc/>
-        public override Type GetType(SyncColumn columnDefinition) => this.GetNpgsqlDbType(columnDefinition) switch
+        public override Type GetType(SyncColumn columnDefinition)
         {
-            NpgsqlDbType.Bigint => typeof(long),
-            NpgsqlDbType.Double => typeof(double),
-            NpgsqlDbType.Int2Vector or NpgsqlDbType.Integer => typeof(int),
-            NpgsqlDbType.Real => typeof(float),
-            NpgsqlDbType.Numeric or NpgsqlDbType.Money => typeof(decimal),
-            NpgsqlDbType.Smallint => typeof(short),
-            NpgsqlDbType.Boolean => typeof(bool),
-            NpgsqlDbType.Char => typeof(char),
-            NpgsqlDbType.Text or NpgsqlDbType.Varchar or NpgsqlDbType.Name or NpgsqlDbType.Citext => typeof(string),
-            NpgsqlDbType.Bytea => typeof(byte[]),
-            NpgsqlDbType.Date or NpgsqlDbType.Timestamp => typeof(DateTime),
-            NpgsqlDbType.Time => typeof(TimeSpan),
-            NpgsqlDbType.TimestampTz or NpgsqlDbType.TimeTz => typeof(DateTimeOffset),
-            NpgsqlDbType.Inet or NpgsqlDbType.Cidr or NpgsqlDbType.MacAddr or NpgsqlDbType.MacAddr8 or NpgsqlDbType.Bit or NpgsqlDbType.Varbit or NpgsqlDbType.TsVector or NpgsqlDbType.TsQuery => typeof(string),
-            NpgsqlDbType.Uuid => typeof(Guid),
-            NpgsqlDbType.Xml or NpgsqlDbType.Json or NpgsqlDbType.Jsonb or NpgsqlDbType.Hstore => typeof(string),
+            if (IsArrayType(columnDefinition))
+                return typeof(string);
 
-            // Geometric types (native PostgreSQL) and GIS types (PostGIS geometry/geography)
-            // are transported as text (WKB hex or text representation) during sync.
-            NpgsqlDbType.Geometry or NpgsqlDbType.Geography
-                or NpgsqlDbType.Point or NpgsqlDbType.Polygon or NpgsqlDbType.Box
-                or NpgsqlDbType.Circle or NpgsqlDbType.Line or NpgsqlDbType.LSeg
-                or NpgsqlDbType.Path => typeof(string),
+            return this.GetNpgsqlDbType(columnDefinition) switch
+            {
+                NpgsqlDbType.Bigint => typeof(long),
+                NpgsqlDbType.Double => typeof(double),
+                NpgsqlDbType.Int2Vector or NpgsqlDbType.Integer => typeof(int),
+                NpgsqlDbType.Real => typeof(float),
+                NpgsqlDbType.Numeric or NpgsqlDbType.Money => typeof(decimal),
+                NpgsqlDbType.Smallint => typeof(short),
+                NpgsqlDbType.Boolean => typeof(bool),
+                NpgsqlDbType.Char => typeof(char),
+                NpgsqlDbType.Text or NpgsqlDbType.Varchar or NpgsqlDbType.Name or NpgsqlDbType.Citext => typeof(string),
+                NpgsqlDbType.Bytea => typeof(byte[]),
+                NpgsqlDbType.Date or NpgsqlDbType.Timestamp => typeof(DateTime),
+                NpgsqlDbType.Time => typeof(TimeSpan),
+                NpgsqlDbType.TimestampTz or NpgsqlDbType.TimeTz => typeof(DateTimeOffset),
+                NpgsqlDbType.Inet or NpgsqlDbType.Cidr or NpgsqlDbType.MacAddr or NpgsqlDbType.MacAddr8 or NpgsqlDbType.Bit or NpgsqlDbType.Varbit or NpgsqlDbType.TsVector or NpgsqlDbType.TsQuery => typeof(string),
+                NpgsqlDbType.Uuid => typeof(Guid),
+                NpgsqlDbType.Xml or NpgsqlDbType.Json or NpgsqlDbType.Jsonb or NpgsqlDbType.Hstore => typeof(string),
 
-            _ => throw new Exception($"this NpgsqlDbType {this.GetNpgsqlDbType(columnDefinition)} is not supported"),
-        };
+                // Geometric types (native PostgreSQL) and GIS types (PostGIS geometry/geography)
+                // are transported as text (WKB hex or text representation) during sync.
+                NpgsqlDbType.Geometry or NpgsqlDbType.Geography
+                    or NpgsqlDbType.Point or NpgsqlDbType.Polygon or NpgsqlDbType.Box
+                    or NpgsqlDbType.Circle or NpgsqlDbType.Line or NpgsqlDbType.LSeg
+                    or NpgsqlDbType.Path => typeof(string),
+
+                _ => throw new Exception($"this NpgsqlDbType {this.GetNpgsqlDbType(columnDefinition)} is not supported"),
+            };
+        }
 
         /// <inheritdoc/>
         public override bool IsNumericType(SyncColumn columnDefinition) => columnDefinition.OriginalTypeName.ToLowerInvariant() switch
@@ -345,10 +395,16 @@ namespace Dotmim.Sync.PostgreSql.Builders
         };
 
         /// <inheritdoc/>
-        public override bool IsValid(SyncColumn columnDefinition) => columnDefinition.OriginalTypeName.ToLowerInvariant() switch
+        public override bool IsValid(SyncColumn columnDefinition)
         {
-            "array" or "smallint" or "int2" or "int2vector" or "smallserial" or "serial2" or "integer" or "int" or "int4" or "serial" or "serial4" or "bigint" or "int8" or "bigserial" or "serial8" or "bit" or "varbit" or "bit varying" or "boolean" or "bool" or "cid" or "cidr" or "inet" or "macaddr" or "macaddr8" or "tsquery" or "tsvector" or "geometry" or "geography" or "box" or "circle" or "line" or "lseg" or "path" or "polygon" or "point" or "bytea" or "character" or "char" or "name" or "character varying" or "varchar" or "refcursor" or "citext" or "text" or "date" or "timestamp" or "timestamp without time zone" or "timestamptz" or "timestamp with time zone" or "timetz" or "time with time zone" or "time" or "time without time zone" or "double precision" or "float8" or "hstore" or "json" or "jsonb" or "money" or "numeric" or "float4" or "real" or "uuid" or "xml" or "bpchar" => true,
-            _ => false,
-        };
+            if (IsArrayType(columnDefinition))
+                return TryGetScalarNpgsqlDbType(columnDefinition.OriginalTypeName.Substring(1).ToLowerInvariant()) != null;
+
+            return columnDefinition.OriginalTypeName.ToLowerInvariant() switch
+            {
+                "smallint" or "int2" or "int2vector" or "smallserial" or "serial2" or "integer" or "int" or "int4" or "serial" or "serial4" or "bigint" or "int8" or "bigserial" or "serial8" or "bit" or "varbit" or "bit varying" or "boolean" or "bool" or "cid" or "cidr" or "inet" or "macaddr" or "macaddr8" or "tsquery" or "tsvector" or "geometry" or "geography" or "box" or "circle" or "line" or "lseg" or "path" or "polygon" or "point" or "bytea" or "character" or "char" or "name" or "character varying" or "varchar" or "refcursor" or "citext" or "text" or "date" or "timestamp" or "timestamp without time zone" or "timestamptz" or "timestamp with time zone" or "timetz" or "time with time zone" or "time" or "time without time zone" or "double precision" or "float8" or "hstore" or "json" or "jsonb" or "money" or "numeric" or "float4" or "real" or "uuid" or "xml" or "bpchar" => true,
+                _ => false,
+            };
+        }
     }
 }

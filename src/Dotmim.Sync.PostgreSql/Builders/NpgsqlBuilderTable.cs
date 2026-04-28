@@ -55,7 +55,7 @@ namespace Dotmim.Sync.PostgreSql.Builders
             var column = this.TableDescription.Columns[columnName];
             var columnParser = new ObjectParser(column.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
             var columnNameString = columnParser.QuotedShortName;
-            var columnType = this.NpgsqlDbMetadata.GetNpgsqlDbType(column);
+            var columnType = this.NpgsqlDbMetadata.GetCompatibleColumnTypeDeclarationString(column, this.TableDescription.OriginalProvider);
 
             var identity = string.Empty;
 
@@ -101,7 +101,10 @@ namespace Dotmim.Sync.PostgreSql.Builders
 
                 // For USER-DEFINED types (e.g., PostGIS geometry/geography), the actual type name
                 // is stored in udt_name, not data_type which just says "USER-DEFINED".
+                // For ARRAY types, udt_name holds the internal array type (e.g. _int4 for integer[]).
                 if (string.Equals(typeName, "USER-DEFINED", StringComparison.OrdinalIgnoreCase))
+                    typeName = udt_name;
+                else if (string.Equals(typeName, "ARRAY", StringComparison.OrdinalIgnoreCase))
                     typeName = udt_name;
 
                 var name = c["column_name"].ToString();

@@ -39,7 +39,7 @@ namespace Dotmim.Sync.PostgreSql
 
                 if (isPrimaryKey)
                     stringBuilder.AppendLine($"\tside.{columnParser.QuotedShortName}, ");
-                else if (NpgsqlDbMetadata.IsGeometricType(mutableColumn))
+                else if (NpgsqlDbMetadata.IsGeometricType(mutableColumn) || NpgsqlDbMetadata.IsArrayType(mutableColumn))
                     stringBuilder.AppendLine($"\tbase.{columnParser.QuotedShortName}::text as {columnParser.QuotedShortName}, ");
                 else
                     stringBuilder.AppendLine($"\tbase.{columnParser.QuotedShortName}, ");
@@ -100,9 +100,9 @@ namespace Dotmim.Sync.PostgreSql
                 var columnParser = new ObjectParser(column.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
                 var columnType = this.NpgsqlDbMetadata.GetCompatibleColumnTypeDeclarationString(column, this.TableDescription.OriginalProvider);
 
-                // Geometric/GIS types are transported as text during sync, so declare function parameters as text.
-                // The values will be cast back to the original type when assigned to the base table in the MERGE.
-                if (NpgsqlDbMetadata.IsGeometricType(column))
+                // Geometric/GIS types and array types are transported as text during sync, so declare
+                // function parameters as text. Values are cast back to the original type in the MERGE.
+                if (NpgsqlDbMetadata.IsGeometricType(column) || NpgsqlDbMetadata.IsArrayType(column))
                     columnType = "text";
 
                 stringBuilder.AppendLine($"\t\"in_{columnParser.NormalizedShortName}\" {columnType} = NULL,");
@@ -154,8 +154,8 @@ namespace Dotmim.Sync.PostgreSql
                 {
                     var columnParser = new ObjectParser(mutableColumn.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
 
-                    // Geometric/GIS columns need an explicit cast from text back to the original type
-                    if (NpgsqlDbMetadata.IsGeometricType(mutableColumn))
+                    // Geometric/GIS and array columns need an explicit cast from text back to the original type
+                    if (NpgsqlDbMetadata.IsGeometricType(mutableColumn) || NpgsqlDbMetadata.IsArrayType(mutableColumn))
                         stringBuilder.AppendLine($"\t{strSeparator}{columnParser.QuotedShortName} = changes.{columnParser.QuotedShortName}::{mutableColumn.OriginalTypeName.ToLowerInvariant()}");
                     else
                         stringBuilder.AppendLine($"\t{strSeparator}{columnParser.QuotedShortName} = changes.{columnParser.QuotedShortName}");
@@ -171,8 +171,8 @@ namespace Dotmim.Sync.PostgreSql
                 var columnParser = new ObjectParser(mutableColumn.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
                 stringBuilderArguments.Append(string.Concat(empty, columnParser.QuotedShortName));
 
-                // Geometric/GIS columns need an explicit cast from text back to the original type
-                if (NpgsqlDbMetadata.IsGeometricType(mutableColumn))
+                // Geometric/GIS and array columns need an explicit cast from text back to the original type
+                if (NpgsqlDbMetadata.IsGeometricType(mutableColumn) || NpgsqlDbMetadata.IsArrayType(mutableColumn))
                     stringBuilderParameters.Append(string.Concat(empty, $"changes.{columnParser.QuotedShortName}::{mutableColumn.OriginalTypeName.ToLowerInvariant()}"));
                 else
                     stringBuilderParameters.Append(string.Concat(empty, $"changes.{columnParser.QuotedShortName}"));
@@ -249,8 +249,8 @@ namespace Dotmim.Sync.PostgreSql
                 var columnParser = new ObjectParser(column.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
                 var columnType = this.NpgsqlDbMetadata.GetCompatibleColumnTypeDeclarationString(column, this.TableDescription.OriginalProvider);
 
-                // Geometric/GIS types are transported as text during sync
-                if (NpgsqlDbMetadata.IsGeometricType(column))
+                // Geometric/GIS and array types are transported as text during sync
+                if (NpgsqlDbMetadata.IsGeometricType(column) || NpgsqlDbMetadata.IsArrayType(column))
                     columnType = "text";
 
                 stringBuilder.AppendLine($"\t\"in_{columnParser.NormalizedShortName}\" {columnType} = NULL,");
