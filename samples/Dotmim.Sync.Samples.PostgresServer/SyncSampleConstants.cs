@@ -6,13 +6,24 @@ internal static class SyncSampleConstants
 
     public const string GeometryArrayScope = "geo-array-scope";
     public const string ShadowScope = "shadow-scope";
+    public const string ShadowTableDemoScope = "shadow-table-demo-scope";
     public const string ExcludeScope = "exclude-scope";
     public const string LoadTestScope = "load-test-scope";
     public const string GlobalExcludeScope = "global-exclude-scope";
 
     public const string GeometryArrayTable = "demo_geo_points";
     public const string ShadowTable = "demo_audit_events";
+    public const string ShadowTableDemoMainTable = "demo_shadow_main";
+    public const string ShadowTableDemoSideTable = "demo_shadow_side";
     public const string ExcludeTable = "demo_customers";
+
+    /// <summary>Stable synthetic PKs for the shadow-table demo (<c>OnShadowTableDemoSyntheticRowsAsync</c> in SampleScopeRegistry).</summary>
+    public static readonly Guid ShadowTableDemoRow1Id = Guid.Parse("11111111-1111-1111-1111-111111111101");
+
+    public static readonly Guid ShadowTableDemoRow2Id = Guid.Parse("11111111-1111-1111-1111-111111111102");
+
+    /// <summary>Tombstone example in the demo — not inserted as live data.</summary>
+    public static readonly Guid ShadowTableDemoDeletedRowId = Guid.Parse("99999999-9999-9999-9999-999999999999");
     public const string LoadTestTable = "demo_load_orders";
 
     // Two tables that share the same audit-style columns. The first inherits every layer of exclusion,

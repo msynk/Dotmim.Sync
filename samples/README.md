@@ -1,6 +1,6 @@
 # Dotmim.Sync samples
 
-This folder contains small demo applications that exercise **PostgreSQL-specific types** (PostGIS `geometry`, `integer[]`), **HTTP sync** (`Dotmim.Sync.Web.Server` / `Dotmim.Sync.Web.Client`), and **shadow columns** (server-only metadata persisted on the SQLite client).
+This folder contains small demo applications that exercise **PostgreSQL-specific types** (PostGIS `geometry`, `integer[]`), **HTTP sync** (`Dotmim.Sync.Web.Server` / `Dotmim.Sync.Web.Client`), **shadow columns** (extra columns defined in setup, filled on the server, stored on the client), and **shadow tables** (no physical table on the server; schema + download rows are defined in setup and `OnShadowTableChangesSelecting`).
 
 ## Prerequisites
 
@@ -20,8 +20,8 @@ Match the connection string in `Dotmim.Sync.Samples.PostgresServer/appsettings.j
 
 | Project | Role |
 |--------|------|
-| `Dotmim.Sync.Samples.PostgresServer` | ASP.NET Core minimal API: provisions a `demo_locations` table (`geometry(Point,4326)`, `integer[]`), seeds rows, exposes Dotmim.Sync at `GET/POST /sync`, fills **shadow columns** in `OnRowsChangesSelected`. |
-| `Dotmim.Sync.Samples.SqliteClient` | Console app: SQLite file (default under `%LOCALAPPDATA%\DotmimSyncSamples\`), calls the server over HTTPS, runs `SyncAgent.SynchronizeAsync`, then prints local rows (including shadow columns). |
+| `Dotmim.Sync.Samples.PostgresServer` | ASP.NET Core minimal API: provisions demo tables (PostGIS `geometry`, `integer[]`, etc.), seeds rows, exposes Dotmim.Sync at `GET/POST /sync`, registers scopes for shadow columns, shadow tables, exclusions, and load test. |
+| `Dotmim.Sync.Samples.SqliteClient` | Console app: SQLite file (default under `%LOCALAPPDATA%\DotmimSyncSamples\`), calls the server over HTTPS, runs `SyncAgent.SynchronizeAsync`, then prints local rows for each menu option. |
 
 ## Run
 
@@ -44,7 +44,16 @@ Match the connection string in `Dotmim.Sync.Samples.PostgresServer/appsettings.j
 
 ## Shadow columns
 
-Both projects register the same shadow column definitions on `demo_locations` (`ServerNote`, `ServerRevision`). The server assigns values in `OnRowsChangesSelected` using the normal row indexer (`args.SyncRow["ServerNote"] = ...`). The client stores them in SQLite for offline use; they are not uploaded back to PostgreSQL.
+Both projects register the same shadow column definitions on `demo_audit_events` (`ServerNote`, `ServerRevision`). The server assigns values in `OnRowsChangesSelected` using the row indexer (`args.SyncRow["ServerNote"] = ...`). The client stores them in SQLite; they are not uploaded back to PostgreSQL.
+
+## Shadow tables (menu **5** on the client)
+
+Scope name: `shadow-table-demo-scope`. There is **no** corresponding table on PostgreSQL for this scope’s synthetic tables (`demo_shadow_main`, `demo_shadow_side`).
+
+- **Server** (`SampleScopeRegistry`): `SetupTables.AddShadowTable(...)` with `ShadowTableColumnDefinition.For<T>(...)`, optional `AddShadowColumn`, a second table via `Tables.Add(...).DefineShadowTableColumns(...)`, `OnShadowTableChangesSelecting` using `AddOrEdit` / `DeleteRow`, plus `OnRowsChangesSelected` for the shadow column on the main table.
+- **Client** (`DemoMenuBuilder`): the **same** `SyncSetup` so schema and provisioning match; after sync, menu **5** prints both SQLite tables.
+
+Run the Postgres server, then the SQLite client and choose **5** for shadow tables only, or **6** to sync **all** demo scopes (including shadow tables).
 
 ## Type notes
 

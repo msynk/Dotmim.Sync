@@ -12,6 +12,22 @@ namespace Dotmim.Sync.Sqlite
     {
 
         /// <inheritdoc />
+        public override void PrepareShadowColumn(SyncColumn columnDefinition)
+        {
+            if (!string.IsNullOrEmpty(columnDefinition.OriginalTypeName))
+                return;
+
+            columnDefinition.OriginalTypeName = this.GetOwnerDbTypeFromDbType(columnDefinition) switch
+            {
+                SqliteType.Integer => "integer",
+                SqliteType.Real => "numeric",
+                SqliteType.Text => "text",
+                SqliteType.Blob => "blob",
+                _ => throw new Exception($"In Column {columnDefinition.ColumnName}, shadow type {columnDefinition.GetDbType()} is not supported"),
+            };
+        }
+
+        /// <inheritdoc />
         public override DbType GetDbType(SyncColumn columnDefinition)
         {
             var typeName = columnDefinition.OriginalTypeName.ToLowerInvariant();

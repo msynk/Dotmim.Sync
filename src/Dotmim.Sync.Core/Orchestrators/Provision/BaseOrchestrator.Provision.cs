@@ -102,6 +102,9 @@ namespace Dotmim.Sync
 
                     await this.InterceptAsync(new ProvisioningTableArgs(context, provision, scopeInfo, schemaTable, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
 
+                    var isShadowTable = schemaTable.IsShadowTable;
+                    var shadowTableOnServer = isShadowTable && this is RemoteOrchestrator;
+
                     // Check if we need to create a schema there
                     bool schemaExists;
                     (context, schemaExists) = await this.InternalExistsSchemaAsync(scopeInfo, context, tableBuilder, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
@@ -120,7 +123,7 @@ namespace Dotmim.Sync
                             atLeastOneSchemaTableBeenCreated = true;
                     }
 
-                    if (provision.HasFlag(SyncProvision.Table))
+                    if (!shadowTableOnServer && provision.HasFlag(SyncProvision.Table))
                     {
                         bool tableExists;
                         (context, tableExists) = await this.InternalExistsTableAsync(scopeInfo, context, tableBuilder, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
@@ -156,7 +159,9 @@ namespace Dotmim.Sync
                         }
                     }
 
-                    if (provision.HasFlag(SyncProvision.TrackingTable))
+                    // Shadow tables have no physical server table, so skip tracking there only. On the client, the data
+                    // table exists and SQLite (and similar) apply commands still require the companion *_tracking table.
+                    if ((!isShadowTable || !shadowTableOnServer) && provision.HasFlag(SyncProvision.TrackingTable))
                     {
                         (context, trackingTableExist) = await this.InternalExistsTrackingTableAsync(scopeInfo, context, tableBuilder, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
 
@@ -170,7 +175,7 @@ namespace Dotmim.Sync
                         }
                     }
 
-                    if (provision.HasFlag(SyncProvision.Triggers))
+                    if (!isShadowTable && provision.HasFlag(SyncProvision.Triggers))
                     {
                         (context, tgCreated) = await this.InternalCreateTriggersAsync(scopeInfo, context, overwrite, tableBuilder, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
 
@@ -178,7 +183,7 @@ namespace Dotmim.Sync
                             atLeastOneTriggerHasBeenCreated = true;
                     }
 
-                    if (provision.HasFlag(SyncProvision.StoredProcedures))
+                    if (!shadowTableOnServer && provision.HasFlag(SyncProvision.StoredProcedures))
                     {
                         (context, spCreated) = await this.InternalCreateStoredProceduresAsync(scopeInfo, context, overwrite, tableBuilder, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
 

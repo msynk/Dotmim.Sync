@@ -10,6 +10,16 @@ namespace Dotmim.Sync.Manager
     {
 
         /// <summary>
+        /// When a <see cref="SyncColumn"/> is built from CLR types only (for example shadow tables),
+        /// populate <see cref="SyncColumn.OriginalTypeName"/> so <see cref="IsValid"/> and other metadata methods can run.
+        /// </summary>
+        /// <param name="columnDefinition">Column to enrich in place.</param>
+        public virtual void PrepareShadowColumn(SyncColumn columnDefinition)
+        {
+            _ = columnDefinition;
+        }
+
+        /// <summary>
         /// Validate if a column definition is actualy supported by the provider.
         /// </summary>
         public abstract bool IsValid(SyncColumn columnDefinition);

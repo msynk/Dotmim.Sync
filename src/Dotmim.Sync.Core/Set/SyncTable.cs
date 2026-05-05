@@ -37,6 +37,13 @@ namespace Dotmim.Sync
         public string OriginalProvider { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether this table is a shadow table (no physical table on the server;
+        /// schema is defined in setup and rows are supplied at sync time).
+        /// </summary>
+        [DataMember(Name = "istblsh", IsRequired = false, EmitDefaultValue = false, Order = 4)]
+        public bool IsShadowTable { get; set; }
+
+        /// <summary>
         /// Gets or Sets the table columns.
         /// </summary>
         [DataMember(Name = "c", IsRequired = false, EmitDefaultValue = false, Order = 5)]
@@ -132,6 +139,7 @@ namespace Dotmim.Sync
             var clone = new SyncTable
             {
                 OriginalProvider = this.OriginalProvider,
+                IsShadowTable = this.IsShadowTable,
                 SchemaName = this.SchemaName,
                 TableName = this.TableName,
             };
@@ -326,6 +334,9 @@ namespace Dotmim.Sync
             // if (this.SyncDirection != other.SyncDirection)
             //    return false;
             if (!string.Equals(this.OriginalProvider, otherInstance.OriginalProvider, sc))
+                return false;
+
+            if (this.IsShadowTable != otherInstance.IsShadowTable)
                 return false;
 
             // Check list

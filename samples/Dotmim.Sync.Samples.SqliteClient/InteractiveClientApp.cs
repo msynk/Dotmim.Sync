@@ -63,14 +63,14 @@ internal sealed class InteractiveClientApp : IDisposable
             if (string.Equals(choice, "q", StringComparison.OrdinalIgnoreCase))
                 break;
 
-            if (string.Equals(choice, "5", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(choice, "6", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (var item in this._menu)
                     await RunScopeSyncAsync(this._agent, this._sqlitePath, item, this._progress).ConfigureAwait(false);
                 continue;
             }
 
-            if (string.Equals(choice, "6", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(choice, "7", StringComparison.OrdinalIgnoreCase))
             {
                 await AdvancedLoadTestRunner.RunAsync(
                     this._serviceUrl,
@@ -90,7 +90,7 @@ internal sealed class InteractiveClientApp : IDisposable
             var selected = this._menu.FirstOrDefault(i => string.Equals(i.MenuKey, choice, StringComparison.OrdinalIgnoreCase));
             if (selected == null)
             {
-                Console.WriteLine("Unknown command. Choose 1–6, c (clear client DB), or q.");
+                Console.WriteLine("Unknown command. Choose 1–7, c (clear client DB), or q.");
                 Console.WriteLine();
                 continue;
             }
@@ -150,8 +150,9 @@ internal sealed class InteractiveClientApp : IDisposable
         Console.WriteLine("  2. Sync shadow columns demo");
         Console.WriteLine("  3. Sync excluded column demo");
         Console.WriteLine("  4. Sync global-exclude demo (global + setup + per-table Include bypass)");
-        Console.WriteLine("  5. Sync all demos (all scopes)");
-        Console.WriteLine("  6. Advanced load test (parallel clients + multi-round stress)");
+        Console.WriteLine("  5. Sync shadow tables demo (no server table; synthetic rows from server)");
+        Console.WriteLine("  6. Sync all demos (all scopes)");
+        Console.WriteLine("  7. Advanced load test (parallel clients + multi-round stress)");
         Console.WriteLine("  c. Clear client SQLite database (fresh test)");
         Console.WriteLine("  q. Quit");
         Console.Write("Selection: ");

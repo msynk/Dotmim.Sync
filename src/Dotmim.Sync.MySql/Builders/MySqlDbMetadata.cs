@@ -129,6 +129,15 @@ namespace Dotmim.Sync.MySql.Builders
         /// </summary>
         public MySqlDbType GetMySqlDbType(SyncColumn column) => (MySqlDbType)this.GetOwnerDbType(column);
 
+        /// <inheritdoc />
+        public override void PrepareShadowColumn(SyncColumn columnDefinition)
+        {
+            if (!string.IsNullOrEmpty(columnDefinition.OriginalTypeName))
+                return;
+
+            columnDefinition.OriginalTypeName = this.GetCompatibleStringFromDbType((DbType)columnDefinition.DbType, columnDefinition.MaxLength);
+        }
+
         /// <summary>
         /// Get a MySql DbTYpe.
         /// </summary>

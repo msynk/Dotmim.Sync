@@ -17,6 +17,20 @@ namespace Dotmim.Sync.SqlServer.Manager
         /// <inheritdoc cref="SqlDbMetadata"/>
         public SqlDbMetadata() { }
 
+        /// <inheritdoc />
+        public override void PrepareShadowColumn(SyncColumn columnDefinition)
+        {
+            if (!string.IsNullOrEmpty(columnDefinition.OriginalTypeName))
+                return;
+
+            var sqlDbType = this.GetOwnerDbTypeFromDbType(columnDefinition);
+            columnDefinition.OriginalTypeName = sqlDbType switch
+            {
+                SqlDbType.Variant => "sql_variant",
+                _ => sqlDbType.ToString().ToLowerInvariant(),
+            };
+        }
+
         /// <summary>
         /// Check precision and scale.
         /// </summary>

@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.Data.Sqlite;
 
 namespace Dotmim.Sync.Samples.SqliteClient;
@@ -29,6 +30,19 @@ internal static class ClientSqliteRowPrinter
         await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
         while (await reader.ReadAsync().ConfigureAwait(false))
             Console.WriteLine($"  {SqliteCol(reader, 1)} | geom={SqliteCol(reader, 2)} | tags={SqliteCol(reader, 3)}");
+    }
+
+    public static async Task PrintShadowTableDemoRowsAsync(string sqlitePath)
+    {
+        await using var conn = new SqliteConnection($"Data Source={sqlitePath};");
+        await conn.OpenAsync().ConfigureAwait(false);
+
+        Console.WriteLine("Shadow tables demo (client — tables exist only here + apply procs; server has no physical tables):");
+        Console.WriteLine();
+
+        await PrintShadowTableDemoOneAsync(conn, SyncSampleConstants.ShadowTableDemoMainTable).ConfigureAwait(false);
+        Console.WriteLine();
+        await PrintShadowTableDemoOneAsync(conn, SyncSampleConstants.ShadowTableDemoSideTable).ConfigureAwait(false);
     }
 
     public static async Task PrintShadowRowsAsync(string sqlitePath)
@@ -148,6 +162,37 @@ internal static class ClientSqliteRowPrinter
 
             Console.WriteLine($"    {string.Join(" | ", parts)}");
         }
+    }
+
+    private static async Task PrintShadowTableDemoOneAsync(SqliteConnection conn, string tableName)
+    {
+        var cols = await ReadColumnNamesAsync(conn, tableName).ConfigureAwait(false);
+        if (cols.Count == 0)
+        {
+            Console.WriteLine($"  [{tableName}] (not provisioned yet — run sync option 5 first)");
+            return;
+        }
+
+        Console.WriteLine($"  [{tableName}] columns: {string.Join(", ", cols)}");
+
+        var quoted = string.Join(", ", cols.Select(c => $"\"{c}\""));
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT {quoted} FROM \"{tableName}\" ORDER BY 1;";
+
+        await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
+        var n = 0;
+        while (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            n++;
+            var parts = new List<string>(reader.FieldCount);
+            for (var i = 0; i < reader.FieldCount; i++)
+                parts.Add($"{cols[i]}={SqliteCol(reader, i)}");
+
+            Console.WriteLine($"    #{n}: {string.Join(" | ", parts)}");
+        }
+
+        if (n == 0)
+            Console.WriteLine("    (no rows)");
     }
 
     private static async Task<List<string>> ReadColumnNamesAsync(SqliteConnection conn, string tableName)

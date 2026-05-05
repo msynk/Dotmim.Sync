@@ -51,6 +51,45 @@ namespace Dotmim.Sync
         }
 
         /// <summary>
+        /// Adds a shadow table (no physical table on the server) with the given column definitions in one step.
+        /// </summary>
+        /// <param name="tableName">Table name (optionally schema-qualified, e.g. <c>dbo.Product</c>).</param>
+        /// <param name="columns">Column definitions for the shadow table.</param>
+        public SetupTable AddShadowTable(string tableName, IEnumerable<ShadowTableColumnDefinition> columns)
+        {
+            var st = new SetupTable(tableName);
+            st.DefineShadowTableColumns(columns);
+            this.Add(st);
+            return st;
+        }
+
+        /// <summary>
+        /// Adds a shadow table with an explicit schema and column definitions in one step.
+        /// </summary>
+        /// <param name="tableName">Table name (not schema-qualified).</param>
+        /// <param name="schemaName">Schema name (may be null or empty).</param>
+        /// <param name="columns">Column definitions for the shadow table.</param>
+        public SetupTable AddShadowTable(string tableName, string schemaName, IEnumerable<ShadowTableColumnDefinition> columns)
+        {
+            var st = new SetupTable(tableName, schemaName);
+            st.DefineShadowTableColumns(columns);
+            this.Add(st);
+            return st;
+        }
+
+        /// <summary>
+        /// Adds a shadow table using a params list of column definitions.
+        /// </summary>
+        public SetupTable AddShadowTable(string tableName, params ShadowTableColumnDefinition[] columns)
+            => this.AddShadowTable(tableName, (IEnumerable<ShadowTableColumnDefinition>)columns);
+
+        /// <summary>
+        /// Adds a shadow table with an explicit schema using a params list of column definitions.
+        /// </summary>
+        public SetupTable AddShadowTable(string tableName, string schemaName, params ShadowTableColumnDefinition[] columns)
+            => this.AddShadowTable(tableName, schemaName, (IEnumerable<ShadowTableColumnDefinition>)columns);
+
+        /// <summary>
         /// Add a new table to the collection of tables to be added to the sync process.
         /// </summary>
         public void Add(SetupTable item)

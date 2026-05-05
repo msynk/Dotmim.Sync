@@ -186,6 +186,92 @@ namespace Dotmim.Sync
                 if (context.SyncWay == SyncWay.Download && setupTable.SyncDirection == SyncDirection.UploadOnly)
                     return (context, default, default);
 
+                if (setupTable.IsShadowTable)
+                {
+                    if (context.SyncWay == SyncWay.Upload)
+                        return (context, default, default);
+
+                    var schemaChangesTableShadow = CreateChangesTable(syncTable, excludeShadow: false);
+                    var tableChangesSelectedShadow = new TableChangesSelected(schemaChangesTableShadow.TableName, schemaChangesTableShadow.SchemaName);
+                    var batchPartInfosShadow = new List<BatchPartInfo>();
+                    BatchPartInfo batchPartInfoUpsertsShadow = null;
+                    BatchPartInfo batchPartInfoDeletedShadow = null;
+
+                    async Task AddUpsertShadowAsync(SyncRow row)
+                    {
+                        var rowsArgs = await this.InterceptAsync(new RowsChangesSelectedArgs(context, row, schemaChangesTableShadow, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
+                        var syncRow = rowsArgs.SyncRow;
+                        if (syncRow == null)
+                            return;
+
+                        batchPartInfoUpsertsShadow = await this.InternalAddRowToBatchPartInfoAsync(context, localSerializerModified, syncRow, batchInfo, batchPartInfoUpsertsShadow, batchPartInfosShadow, schemaChangesTableShadow, tableChangesSelectedShadow, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    async Task AddDeleteShadowAsync(SyncRow row)
+                    {
+                        var rowsArgs = await this.InterceptAsync(new RowsChangesSelectedArgs(context, row, schemaChangesTableShadow, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
+                        var syncRow = rowsArgs.SyncRow;
+                        if (syncRow == null)
+                            return;
+
+                        batchPartInfoDeletedShadow = await this.InternalAddRowToBatchPartInfoAsync(context, localSerializerDeleted, syncRow, batchInfo, batchPartInfoDeletedShadow, batchPartInfosShadow, schemaChangesTableShadow, tableChangesSelectedShadow, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    var shadowTableArgs = new ShadowTableChangesSelectingArgs(context, schemaChangesTableShadow, tableChangesSelectedShadow, batchInfo, AddUpsertShadowAsync, AddDeleteShadowAsync, connection, transaction);
+                    await this.InterceptAsync(shadowTableArgs, progress, cancellationToken).ConfigureAwait(false);
+
+                    var closeSerializerShadow = new Func<LocalJsonSerializer, BatchChangesCreatedArgs, Task>(async (localJsonSerializer, batchArgs) =>
+                    {
+                        if (localJsonSerializer != null && localJsonSerializer.IsOpen)
+                        {
+                            await localJsonSerializer.CloseFileAsync().ConfigureAwait(false);
+                            await this.InterceptAsync(batchArgs, progress, cancellationToken).ConfigureAwait(false);
+                        }
+                    });
+
+                    if (batchPartInfoUpsertsShadow != null || batchPartInfoDeletedShadow != null)
+                    {
+                        if (batchPartInfoUpsertsShadow?.Index > batchPartInfoDeletedShadow?.Index)
+                        {
+                            await closeSerializerShadow(localSerializerDeleted, new BatchChangesCreatedArgs(context, batchPartInfoDeletedShadow, schemaChangesTableShadow, tableChangesSelectedShadow, SyncRowState.Deleted, connection, transaction)).ConfigureAwait(false);
+                            await closeSerializerShadow(localSerializerModified, new BatchChangesCreatedArgs(context, batchPartInfoUpsertsShadow, schemaChangesTableShadow, tableChangesSelectedShadow, SyncRowState.Modified, connection, transaction)).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            await closeSerializerShadow(localSerializerModified, new BatchChangesCreatedArgs(context, batchPartInfoUpsertsShadow, schemaChangesTableShadow, tableChangesSelectedShadow, SyncRowState.Modified, connection, transaction)).ConfigureAwait(false);
+                            await closeSerializerShadow(localSerializerDeleted, new BatchChangesCreatedArgs(context, batchPartInfoDeletedShadow, schemaChangesTableShadow, tableChangesSelectedShadow, SyncRowState.Deleted, connection, transaction)).ConfigureAwait(false);
+                        }
+                    }
+
+                    if (localSerializerModified.IsOpen)
+                    {
+                        await localSerializerModified.CloseFileAsync().ConfigureAwait(false);
+                        await this.InterceptAsync(new BatchChangesCreatedArgs(context, batchPartInfoUpsertsShadow, schemaChangesTableShadow, tableChangesSelectedShadow, SyncRowState.Modified, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    if (localSerializerDeleted.IsOpen)
+                    {
+                        await localSerializerDeleted.CloseFileAsync().ConfigureAwait(false);
+                        await this.InterceptAsync(new BatchChangesCreatedArgs(context, batchPartInfoDeletedShadow, schemaChangesTableShadow, tableChangesSelectedShadow, SyncRowState.Deleted, connection, transaction), progress, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    foreach (var bpi in batchPartInfosShadow.ToArray())
+                    {
+                        var fullPath = batchInfo.GetBatchPartInfoFullPath(bpi);
+
+                        if (fullPath != null && bpi.RowsCount == 0 && File.Exists(fullPath))
+                        {
+                            File.Delete(fullPath);
+                            batchPartInfosShadow.Remove(bpi);
+                        }
+                    }
+
+                    var tableChangesSelectedArgsShadow = new TableChangesSelectedArgs(context, batchInfo, batchPartInfosShadow, syncTable, tableChangesSelectedShadow, connection, transaction);
+                    await this.InterceptAsync(tableChangesSelectedArgsShadow, progress, cancellationToken).ConfigureAwait(false);
+
+                    return (context, batchPartInfosShadow, tableChangesSelectedShadow);
+                }
+
                 DbCommandType dbCommandType;
                 (selectIncrementalChangesCommand, dbCommandType) = await this.InternalGetSelectChangesCommandAsync(scopeInfo, context, syncTable, isNew,
                         connection, transaction).ConfigureAwait(false);
@@ -407,6 +493,9 @@ namespace Dotmim.Sync
 
                     // if we are in download stage, so check if table is not download only
                     if (context.SyncWay == SyncWay.Download && setupTable.SyncDirection == SyncDirection.UploadOnly)
+                        return;
+
+                    if (setupTable.IsShadowTable)
                         return;
 
                     // Get correct adapter

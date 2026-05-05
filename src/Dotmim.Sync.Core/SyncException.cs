@@ -537,6 +537,24 @@ namespace Dotmim.Sync
     }
 
     /// <summary>
+    /// Raised when a shadow table setup is inconsistent (missing columns, primary key, or invalid options).
+    /// </summary>
+    public class InvalidShadowTableSetupException : Exception
+    {
+        /// <inheritdoc cref="InvalidShadowTableSetupException"/>
+        public InvalidShadowTableSetupException(string message)
+            : base(message)
+        {
+        }
+
+        /// <inheritdoc cref="InvalidShadowTableSetupException"/>
+        public InvalidShadowTableSetupException(string message, Exception innerException)
+            : base(message, innerException)
+        {
+        }
+    }
+
+    /// <summary>
     /// Setup Conflict, when setup provided by the user in code is different from the one in database.
     /// </summary>
     public class SetupConflictOnClientException : Exception

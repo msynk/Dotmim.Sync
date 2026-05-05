@@ -101,6 +101,7 @@ namespace Dotmim.Sync
                     throw new MissingTablesException();
 
                 this.ValidateFiltersDoNotReferenceExcludedColumns(setup);
+                this.ValidateShadowTables(setup);
 
                 using var runner = await this.GetConnectionAsync(context, SyncMode.NoTransaction, SyncStage.Provisioning, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
                 await using (runner.ConfigureAwait(false))
@@ -146,6 +147,42 @@ namespace Dotmim.Sync
             }
         }
 
+        private void ValidateShadowTables(SyncSetup setup)
+        {
+            if (setup?.Tables == null)
+                return;
+
+            var sc = SyncGlobalization.DataSourceStringComparison;
+
+            foreach (var st in setup.Tables)
+            {
+                if (!st.IsShadowTable)
+                    continue;
+
+                if (st.HasColumns)
+                    throw new InvalidShadowTableSetupException($"Shadow table {st.GetFullName()} cannot specify server column names in {nameof(SetupTable.Columns)}. Use {nameof(SetupTable.ShadowTableColumns)} instead.");
+
+                if (!st.HasShadowTableColumns)
+                    throw new InvalidShadowTableSetupException($"Shadow table {st.GetFullName()} must define at least one column in {nameof(SetupTable.ShadowTableColumns)}.");
+
+                if (!st.ShadowTableColumns.Any(c => c.IsPrimaryKey))
+                    throw new InvalidShadowTableSetupException($"Shadow table {st.GetFullName()} must mark at least one column as primary key ({nameof(SetupShadowTableColumn.IsPrimaryKey)}).");
+
+                if (st.SyncDirection != SyncDirection.DownloadOnly && st.SyncDirection != SyncDirection.None)
+                    throw new InvalidShadowTableSetupException($"Shadow table {st.GetFullName()} must use {nameof(SyncDirection.DownloadOnly)} (or {nameof(SyncDirection.None)}).");
+
+                if (setup.Filters != null)
+                {
+                    foreach (var filter in setup.Filters)
+                    {
+                        var fSchema = string.IsNullOrEmpty(filter.SchemaName) ? string.Empty : filter.SchemaName;
+                        if (string.Equals(filter.TableName, st.TableName, sc) && string.Equals(fSchema, st.SchemaName ?? string.Empty, sc))
+                            throw new InvalidShadowTableSetupException($"Filters are not supported on shadow table {st.GetFullName()}.");
+                    }
+                }
+            }
+        }
+
         /// <summary>
         /// Get all tables with column names from database.
         /// </summary>
@@ -169,6 +206,148 @@ namespace Dotmim.Sync
             }
         }
 
+        private void EnrichSyncColumnForShadowDefinition(SyncContext context, SetupTable setupTable, SyncTable schemaTable, SyncColumn column, ref int ordinal)
+        {
+            _ = context;
+
+            this.Provider.GetMetadata().PrepareShadowColumn(column);
+
+            if (!this.Provider.GetMetadata().IsValid(column))
+                throw new UnsupportedColumnTypeException(setupTable.GetFullName(), column.ColumnName, column.OriginalTypeName, this.Provider.GetProviderTypeName());
+
+            var columnNameLower = column.ColumnName.ToLowerInvariant();
+            if (columnNameLower == "sync_scope_id"
+                || columnNameLower == "changeTable"
+                || columnNameLower == "sync_scope_name"
+                || columnNameLower == "sync_min_timestamp"
+                || columnNameLower == "sync_row_count"
+                || columnNameLower == "sync_force_write"
+                || columnNameLower == "sync_update_scope_id"
+                || columnNameLower == "sync_timestamp"
+                || columnNameLower == "sync_row_is_tombstone")
+                throw new UnsupportedColumnNameException(setupTable.GetFullName(), column.ColumnName, column.OriginalTypeName, this.Provider.GetProviderTypeName());
+
+            column.MaxLength = this.Provider.GetMetadata().GetMaxLength(column);
+            column.OriginalDbType = this.Provider.GetMetadata().GetOwnerDbType(column).ToString();
+            column.DbType = (int)this.Provider.GetMetadata().GetDbType(column);
+            column.IsReadOnly = this.Provider.GetMetadata().IsReadonly(column);
+            column.Ordinal = ordinal;
+
+            if (this.Provider.GetMetadata().IsNumericType(column))
+            {
+                if (this.Provider.GetMetadata().IsSupportingScale(column))
+                {
+                    var (p, s) = this.Provider.GetMetadata().GetPrecisionAndScale(column);
+                    column.Precision = p;
+                    column.PrecisionIsSpecified = true;
+                    column.Scale = s;
+                    column.ScaleIsSpecified = true;
+                }
+                else
+                {
+                    column.Precision = this.Provider.GetMetadata().GetPrecision(column);
+                    column.PrecisionIsSpecified = true;
+                    column.ScaleIsSpecified = false;
+                }
+            }
+
+            column.SetType(this.Provider.GetMetadata().GetType(column));
+            schemaTable.Columns.Add(column);
+            ordinal++;
+        }
+
+        private Task<(SyncTable SyncTable, IEnumerable<DbRelationDefinition> Relations)> InternalGetShadowTableSchemaFromSetupAsync(
+            SyncContext context, SyncSetup setup, SetupTable setupTable, DbConnection connection, DbTransaction transaction,
+            IProgress<ProgressArgs> progress, CancellationToken cancellationToken)
+        {
+            _ = setup;
+            _ = connection;
+            _ = transaction;
+            _ = progress;
+            _ = cancellationToken;
+
+            try
+            {
+                if (this.Provider == null)
+                    throw new MissingProviderException(nameof(this.InternalGetShadowTableSchemaFromSetupAsync));
+
+                var schemaNorm = string.IsNullOrEmpty(setupTable.SchemaName) ? string.Empty : setupTable.SchemaName;
+                var syncTable = new SyncTable(setupTable.TableName, schemaNorm)
+                {
+                    IsShadowTable = true,
+                    OriginalProvider = this.Provider.GetProviderTypeName(),
+                };
+
+                syncTable.PrimaryKeys.Clear();
+                syncTable.Columns.Clear();
+
+                var sc = SyncGlobalization.DataSourceStringComparison;
+                var pkNames = setupTable.ShadowTableColumns.Where(c => c.IsPrimaryKey).Select(c => c.ColumnName).ToList();
+                for (var i = 0; i < pkNames.Count; i++)
+                {
+                    for (var j = i + 1; j < pkNames.Count; j++)
+                    {
+                        if (string.Equals(pkNames[i], pkNames[j], sc))
+                            throw new InvalidShadowTableSetupException($"Shadow table {setupTable.GetFullName()} defines duplicate primary key column names.");
+                    }
+                }
+
+                var ordinal = 0;
+                foreach (var def in setupTable.ShadowTableColumns)
+                {
+                    var column = new SyncColumn(def.ColumnName, def.DotnetType)
+                    {
+                        AllowDBNull = !def.IsPrimaryKey,
+                    };
+                    this.EnrichSyncColumnForShadowDefinition(context, setupTable, syncTable, column, ref ordinal);
+                }
+
+                if (setupTable.HasShadowColumns)
+                {
+                    foreach (var shadowDef in setupTable.ShadowColumns)
+                    {
+                        var shadowCol = new SyncColumn(shadowDef.ColumnName, shadowDef.DotnetType)
+                        {
+                            IsShadow = true,
+                            AllowDBNull = true,
+                        };
+                        this.EnrichSyncColumnForShadowDefinition(context, setupTable, syncTable, shadowCol, ref ordinal);
+                    }
+                }
+
+                foreach (var def in setupTable.ShadowTableColumns.Where(c => c.IsPrimaryKey))
+                    syncTable.PrimaryKeys.Add(def.ColumnName);
+
+                foreach (var rowColumn in syncTable.PrimaryKeys)
+                {
+                    var columnKey = syncTable.Columns[rowColumn];
+                    if (columnKey == null)
+                        throw new MissingPrimaryKeyColumnException(rowColumn, syncTable.TableName);
+
+                    var columnNameLower = columnKey.ColumnName.ToLowerInvariant();
+                    if (columnNameLower == "update_scope_id"
+                        || columnNameLower == "timestamp"
+                        || columnNameLower == "timestamp_bigint"
+                        || columnNameLower == "sync_row_is_tombstone"
+                        || columnNameLower == "last_change_datetime")
+                        throw new UnsupportedPrimaryKeyColumnNameException(syncTable.GetFullName(), columnKey.ColumnName, columnKey.OriginalTypeName, this.Provider.GetProviderTypeName());
+                }
+
+                foreach (var column in syncTable.Columns.Where(c => c.IsAutoIncrement))
+                {
+                    if (!syncTable.IsPrimaryKey(column))
+                        throw new InvalidColumnAutoIncrementException(column.ColumnName, syncTable.TableName);
+                }
+
+                return Task.FromResult((syncTable, (IEnumerable<DbRelationDefinition>)Enumerable.Empty<DbRelationDefinition>()));
+            }
+            catch (Exception ex)
+            {
+                string message = $"Table:{setupTable.GetFullName()}.";
+                throw this.GetSyncError(context, ex, message);
+            }
+        }
+
         private async Task<(SyncTable SyncTable, IEnumerable<DbRelationDefinition> Relations)> InternalGetTableSchemaAsync(
             SyncContext context, SyncSetup setup, SetupTable setupTable, DbConnection connection, DbTransaction transaction,
             IProgress<ProgressArgs> progress, CancellationToken cancellationToken)
@@ -178,6 +357,9 @@ namespace Dotmim.Sync
 
                 if (this.Provider == null)
                     throw new MissingProviderException(nameof(this.InternalGetTableSchemaAsync));
+
+                if (setupTable.IsShadowTable)
+                    return await this.InternalGetShadowTableSchemaFromSetupAsync(context, setup, setupTable, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
 
                 // ensure table is compliante with name / schema with provider
                 var syncTable = await this.Provider.GetDatabaseBuilder().EnsureTableAsync(setupTable.TableName, setupTable.SchemaName, connection, transaction).ConfigureAwait(false);

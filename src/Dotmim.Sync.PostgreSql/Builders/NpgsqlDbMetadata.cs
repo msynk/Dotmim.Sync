@@ -25,6 +25,35 @@ namespace Dotmim.Sync.PostgreSql.Builders
         /// </summary>
         public NpgsqlDbMetadata() { }
 
+        /// <inheritdoc />
+        public override void PrepareShadowColumn(SyncColumn columnDefinition)
+        {
+            if (!string.IsNullOrEmpty(columnDefinition.OriginalTypeName))
+                return;
+
+            var npgsqlDbType = GetOwnerDbTypeFromDbType(columnDefinition);
+            columnDefinition.OriginalTypeName = npgsqlDbType switch
+            {
+                NpgsqlDbType.Varchar => "varchar",
+                NpgsqlDbType.Text => "text",
+                NpgsqlDbType.Bytea => "bytea",
+                NpgsqlDbType.Boolean => "boolean",
+                NpgsqlDbType.Smallint => "smallint",
+                NpgsqlDbType.Money => "money",
+                NpgsqlDbType.Date => "date",
+                NpgsqlDbType.Time => "time",
+                NpgsqlDbType.Timestamp => "timestamp",
+                NpgsqlDbType.TimestampTz => "timestamptz",
+                NpgsqlDbType.Real => "real",
+                NpgsqlDbType.Numeric => "numeric",
+                NpgsqlDbType.Double => "double precision",
+                NpgsqlDbType.Uuid => "uuid",
+                NpgsqlDbType.Integer => "integer",
+                NpgsqlDbType.Bigint => "bigint",
+                _ => throw new Exception($"Shadow column {columnDefinition.ColumnName}: unsupported NpgsqlDbType {npgsqlDbType}"),
+            };
+        }
+
         /// <summary>
         /// Returns true if the column type is a geometric or GIS type (PostGIS geometry/geography
         /// or native PostgreSQL geometric types) that requires text casting for sync transport.
