@@ -711,14 +711,19 @@ namespace Dotmim.Sync
                     if (columnName == "sync_update_scope_id")
                         continue;
 
-                    // Skip columns that are beyond the schema (e.g., shadow columns excluded during upload)
-                    if (i >= schemaTable.Columns.Count)
+                    // Map by column name so row values align with the schema even when the reader's field order
+                    // differs from schemaTable.Columns order (e.g. incremental selects that project PKs from the
+                    // tracking side AND repeat them from the base table, or shadow columns that exist in the schema
+                    // but are not emitted by the provider SQL).
+                    var schemaColumn = schemaTable.Columns[columnName];
+                    if (schemaColumn == null)
                         continue;
 
+                    var columnIndex = schemaTable.Columns.IndexOf(schemaColumn);
                     var columnValueObject = dataReader.GetValue(i);
                     var columnValue = columnValueObject == DBNull.Value ? null : columnValueObject;
 
-                    syncRow[i] = columnValue;
+                    syncRow[columnIndex] = columnValue;
                 }
 
                 syncRow.RowState = isTombstone ? SyncRowState.Deleted : SyncRowState.Modified;
