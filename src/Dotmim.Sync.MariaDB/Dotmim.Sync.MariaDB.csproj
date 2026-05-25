@@ -27,6 +27,7 @@
 		<Compile Include="..\Dotmim.Sync.MySql\Builders\MySqlTableBuilder.cs" Link="Builders\MySqlTableBuilder.cs" />
 		<Compile Include="..\Dotmim.Sync.MySql\MySqlManagementUtils.cs" Link="MySqlManagementUtils.cs" />
 		<Compile Include="..\Dotmim.Sync.MySql\MySqlSyncAdapter.cs" Link="MySqlSyncAdapter.cs" />
+		<Compile Include="..\Dotmim.Sync.MySql\MySqlSyncAdapter.Batch.cs" Link="MySqlSyncAdapter.Batch.cs" />
 		<Compile Include="..\Dotmim.Sync.MySql\MySqlSyncAdapter.GetChanges.cs" Link="MySqlSyncAdapter.GetChanges.cs" />
 		<Compile Include="..\Dotmim.Sync.MySql\MySqlSyncAdapter.Metadata.cs" Link="MySqlSyncAdapter.Metadata.cs" />
 		<Compile Include="..\Dotmim.Sync.MySql\MySqlTransientExceptionDetector.cs" Link="MySqlTransientExceptionDetector.cs" />

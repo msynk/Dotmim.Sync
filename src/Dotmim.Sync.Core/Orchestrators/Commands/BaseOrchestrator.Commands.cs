@@ -140,6 +140,14 @@ namespace Dotmim.Sync
             if (lazyCommand.Value.IsPrepared == true)
                 return (command, isBatch);
 
+            // Skip Prepare() when the command has no CommandText (e.g. a bulk
+            // batch placeholder where the adapter executes its own SQL inside
+            // ExecuteBatchCommandAsync). Calling Prepare on an empty command
+            // throws on Npgsql/MySql/SQLite ("CommandText property has not
+            // been initialized") and is meaningless anyway.
+            if (string.IsNullOrEmpty(command.CommandText))
+                return (command, isBatch);
+
             // Testing The Prepare() performance increase
             await command.PrepareAsync(cancellationToken).ConfigureAwait(false);
 // Adding this command as prepared

@@ -71,8 +71,9 @@ namespace Dotmim.Sync.PostgreSql
             DbCommandType.SelectInitializedChangesWithFilters => this.GetSelectInitializedChangesCommand(filter),
             DbCommandType.SelectChangesWithFilters => this.GetSelectChangesCommand(filter),
             DbCommandType.SelectRow => this.GetSelectRowCommand(),
-            DbCommandType.UpdateRow or DbCommandType.InsertRow or DbCommandType.UpdateRows or DbCommandType.InsertRows
-            => this.GetUpdateRowCommand(),
+            DbCommandType.UpdateRows or DbCommandType.InsertRows when this.UseBulkOperations => (new NpgsqlCommand(), true),
+            DbCommandType.DeleteRows when this.UseBulkOperations => (new NpgsqlCommand(), true),
+            DbCommandType.UpdateRow or DbCommandType.InsertRow or DbCommandType.UpdateRows or DbCommandType.InsertRows => this.GetUpdateRowCommand(),
             DbCommandType.DeleteRow or DbCommandType.DeleteRows => this.GetDeleteRowCommand(),
             DbCommandType.DisableConstraints => this.GetDisableConstraintCommand(),
             DbCommandType.EnableConstraints => this.GetEnableConstraintCommand(),
@@ -241,10 +242,5 @@ namespace Dotmim.Sync.PostgreSql
             return (command, false);
         }
 
-        /// <summary>
-        /// Not implemented for PostgreSql.
-        /// </summary>
-        public override Task ExecuteBatchCommandAsync(SyncContext context, DbCommand cmd, Guid senderScopeId, IEnumerable<SyncRow> arrayItems, SyncTable schemaChangesTable, SyncTable failedRows, long? lastTimestamp, DbConnection connection, DbTransaction transaction)
-            => throw new NotImplementedException();
     }
 }

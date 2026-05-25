@@ -137,15 +137,19 @@ p.ParameterName = $"@{p.ParameterName}";
                     break;
                 case DbCommandType.UpdateRow:
                 case DbCommandType.InsertRow:
-                case DbCommandType.UpdateRows:
-                case DbCommandType.InsertRows:
                     command.CommandType = CommandType.StoredProcedure;
                     command.CommandText = this.MySqlObjectNames.GetStoredProcedureCommandName(DbStoredProcedureType.UpdateRow, filter);
                     break;
+                case DbCommandType.UpdateRows:
+                case DbCommandType.InsertRows:
+                    isBatch = true;
+                    break;
                 case DbCommandType.DeleteRow:
-                case DbCommandType.DeleteRows:
                     command.CommandType = CommandType.StoredProcedure;
                     command.CommandText = this.MySqlObjectNames.GetStoredProcedureCommandName(DbStoredProcedureType.DeleteRow, filter);
+                    break;
+                case DbCommandType.DeleteRows:
+                    isBatch = true;
                     break;
                 case DbCommandType.DisableConstraints:
                     command.CommandType = CommandType.Text;
@@ -199,12 +203,6 @@ p.ParameterName = $"@{p.ParameterName}";
 
             return (command, isBatch);
         }
-
-        /// <summary>
-        /// Not supported by MySQL.
-        /// </summary>
-        public override Task ExecuteBatchCommandAsync(SyncContext context, DbCommand cmd, Guid senderScopeId, IEnumerable<SyncRow> arrayItems, SyncTable schemaChangesTable, SyncTable failedRows, long? lastTimestamp, DbConnection connection, DbTransaction transaction = null)
-            => throw new NotImplementedException();
 
         /// <inheritdoc />
         public override DbColumnNames GetParsedColumnNames(string name)

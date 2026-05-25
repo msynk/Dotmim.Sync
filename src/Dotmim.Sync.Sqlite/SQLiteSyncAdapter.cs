@@ -12,7 +12,7 @@ namespace Dotmim.Sync.Sqlite
     /// <summary>
     /// Sqlite sync adapter.
     /// </summary>
-    public class SqliteSyncAdapter : DbSyncAdapter
+    public partial class SqliteSyncAdapter : DbSyncAdapter
     {
         private bool disableSqlFiltersGeneration;
 
@@ -46,9 +46,12 @@ namespace Dotmim.Sync.Sqlite
         /// <inheritdoc />
         public override (DbCommand, bool) GetCommand(SyncContext context, DbCommandType commandType, SyncFilter filter = null)
         {
+            // Activate batch path for the bulk-variant command types
+            if (commandType is DbCommandType.UpdateRows or DbCommandType.InsertRows or DbCommandType.DeleteRows)
+                return (new SqliteCommand(), true);
+
             var command = new SqliteCommand();
-            string text;
-            text = this.SqliteObjectNames.GetCommandName(commandType, filter);
+            var text = this.SqliteObjectNames.GetCommandName(commandType, filter);
 
             // on Sqlite, everything is text :)
             command.CommandType = CommandType.Text;
@@ -65,8 +68,5 @@ namespace Dotmim.Sync.Sqlite
         public override DbCommand EnsureCommandParametersValues(SyncContext context, DbCommand command, DbCommandType commandType, DbConnection connection, DbTransaction transaction)
             => command;
 
-        /// <inheritdoc />
-        public override Task ExecuteBatchCommandAsync(SyncContext context, DbCommand cmd, Guid senderScopeId, IEnumerable<SyncRow> arrayItems, SyncTable schemaChangesTable, SyncTable failedRows, long? lastTimestamp, DbConnection connection, DbTransaction transaction = null)
-            => throw new NotImplementedException();
     }
 }
