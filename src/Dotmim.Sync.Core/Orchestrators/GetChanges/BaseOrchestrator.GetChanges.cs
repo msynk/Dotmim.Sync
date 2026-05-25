@@ -696,6 +696,11 @@ namespace Dotmim.Sync
 
                 var isTombstone = false;
 
+                // Track which schema columns have already been written so that a duplicate reader
+                // field (e.g. a PK projected from both the tracking side and the base table) never
+                // overwrites a value that was already set by an earlier field with the same name.
+                var writtenColumns = new System.Collections.Generic.HashSet<int>();
+
                 for (var i = 0; i < dataReader.FieldCount; i++)
                 {
                     var columnName = dataReader.GetName(i);
@@ -720,6 +725,11 @@ namespace Dotmim.Sync
                         continue;
 
                     var columnIndex = schemaTable.Columns.IndexOf(schemaColumn);
+
+                    // First occurrence wins: skip duplicate reader fields for the same schema column.
+                    if (!writtenColumns.Add(columnIndex))
+                        continue;
+
                     var columnValueObject = dataReader.GetValue(i);
                     var columnValue = columnValueObject == DBNull.Value ? null : columnValueObject;
 

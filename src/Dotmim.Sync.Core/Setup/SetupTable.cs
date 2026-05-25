@@ -366,9 +366,30 @@ namespace Dotmim.Sync
                 return true;
             }
 
+            bool ShadowColumnsEqual(Collection<SetupShadowColumn> a, Collection<SetupShadowColumn> b)
+            {
+                if (a == null || a.Count == 0)
+                    return b == null || b.Count == 0;
+                if (b == null || b.Count != a.Count)
+                    return false;
+
+                for (var i = 0; i < a.Count; i++)
+                {
+                    var x = a[i];
+                    var y = b[i];
+                    if (!string.Equals(x.ColumnName, y.ColumnName, sc))
+                        return false;
+                    if (!string.Equals(x.TypeName, y.TypeName, sc))
+                        return false;
+                }
+
+                return true;
+            }
+
             // checking properties
             return this.IsShadowTable == otherInstance.IsShadowTable
                     && ShadowTableColumnsEqual(this.ShadowTableColumns, otherInstance.ShadowTableColumns)
+                    && ShadowColumnsEqual(this.ShadowColumns, otherInstance.ShadowColumns)
                     && this.SyncDirection == otherInstance.SyncDirection
                     && this.Columns.CompareWith(otherInstance.Columns, (c, oc) => string.Equals(c, oc, sc))
                     && excludedEqual

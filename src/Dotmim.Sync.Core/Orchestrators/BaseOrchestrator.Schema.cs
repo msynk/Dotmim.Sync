@@ -217,7 +217,7 @@ namespace Dotmim.Sync
 
             var columnNameLower = column.ColumnName.ToLowerInvariant();
             if (columnNameLower == "sync_scope_id"
-                || columnNameLower == "changeTable"
+                || columnNameLower == "changetable"
                 || columnNameLower == "sync_scope_name"
                 || columnNameLower == "sync_min_timestamp"
                 || columnNameLower == "sync_row_count"
@@ -593,7 +593,7 @@ namespace Dotmim.Sync
 
                     var columnNameLower = column.ColumnName.ToLowerInvariant();
                     if (columnNameLower == "sync_scope_id"
-                        || columnNameLower == "changeTable"
+                        || columnNameLower == "changetable"
                         || columnNameLower == "sync_scope_name"
                         || columnNameLower == "sync_min_timestamp"
                         || columnNameLower == "sync_row_count"

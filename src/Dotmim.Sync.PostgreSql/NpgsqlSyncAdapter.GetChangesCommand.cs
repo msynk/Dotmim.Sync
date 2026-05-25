@@ -39,7 +39,10 @@ namespace Dotmim.Sync.PostgreSql
                 stringBuilder.AppendLine($"\tside.{columnParser.QuotedShortName}, ");
             }
 
-            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, true, includeShadow: false))
+            // PKs are already projected from `side` above; exclude them here so the same column name
+            // does not appear twice in the SELECT list.  For tombstone rows the RIGHT JOIN leaves
+            // base.<pk> as NULL, and a duplicate field would overwrite the correct side.<pk> value.
+            foreach (var mutableColumn in this.TableDescription.GetMutableColumns(false, false, includeShadow: false))
             {
                 var columnParser = new ObjectParser(mutableColumn.ColumnName, NpgsqlObjectNames.LeftQuote, NpgsqlObjectNames.RightQuote);
 
