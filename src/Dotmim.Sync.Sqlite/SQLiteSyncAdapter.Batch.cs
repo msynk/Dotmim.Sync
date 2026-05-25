@@ -57,13 +57,17 @@ namespace Dotmim.Sync.Sqlite
             // repeated ObjectParser allocations and DbType lookups.
             var columns = BuildColumnInfos(schemaChangesTable);
 
-            // Unique name — avoids collisions during concurrent usage of the same connection.
+            // Unique names — avoid collisions during concurrent usage of the same connection.
             var stagingTable = $"_sync_{Guid.NewGuid():N}";
+            var conflictsTable = $"_sync_c_{Guid.NewGuid():N}";
 
             // Capture and drop the per-row sync triggers (insert/update/delete)
             // so they don't fire for every row in the bulk apply.  Without this,
             // every row would cause an extra `INSERT OR REPLACE INTO tracking`
-            // via the AFTER trigger, doubling tracking-table writes.
+            // via the AFTER trigger, doubling tracking-table writes.  Best-effort:
+            // even if the drop is incomplete, the post-bulk force-write of tracking
+            // below still ends up with the correct (sender scope_id, current ts)
+            // for every applied row.
             var savedTriggers = await CaptureTriggersAsync(
                 schemaChangesTable.TableName, sqliteConn, sqliteTx).ConfigureAwait(false);
 
@@ -76,37 +80,52 @@ namespace Dotmim.Sync.Sqlite
 
                 await DropTriggersAsync(savedTriggers, sqliteConn, sqliteTx).ConfigureAwait(false);
 
-                // 1. Create temp staging table
+                // 1. Create temp staging + conflicts tables
                 await CreateSqliteStagingTableAsync(
                     stagingTable, columns, sqliteConn, sqliteTx).ConfigureAwait(false);
+
+                await CreateSqliteConflictsTableAsync(
+                    conflictsTable, columns, sqliteConn, sqliteTx).ConfigureAwait(false);
 
                 // 2. Bulk-load rows in sub-batches (respects SQLite parameter limit)
                 await BulkInsertIntoSqliteStagingAsync(
                     stagingTable, items, columns, sqliteConn, sqliteTx).ConfigureAwait(false);
 
-                // 3. Apply against the real table + tracking in one statement
+                // 3. Detect conflicts BEFORE applying the bulk -- at this point the
+                //    tracking table still reflects the pre-bulk state and is the
+                //    only meaningful snapshot for "did a local change happen after
+                //    @sync_min_timestamp?".  Doing this AFTER the bulk would
+                //    compare against whatever the bulk + (possibly still-active)
+                //    triggers just wrote into tracking, which is meaningless.
+                await CaptureSqliteConflictPksAsync(
+                    stagingTable, conflictsTable, senderScopeId, lastTimestamp, syncForceWrite,
+                    schemaChangesTable, columns, sqliteConn, sqliteTx).ConfigureAwait(false);
+
+                // 4. Apply against the real table + tracking (excludes conflict rows
+                //    via NOT EXISTS against the captured conflict PK set).
                 if (isDelete)
                     await BulkApplySqliteDeleteAsync(
-                        stagingTable, senderScopeId, lastTimestamp, syncForceWrite,
+                        stagingTable, conflictsTable, senderScopeId,
                         schemaChangesTable, columns, sqliteConn, sqliteTx).ConfigureAwait(false);
                 else
                     await BulkApplySqliteUpsertAsync(
-                        stagingTable, senderScopeId, lastTimestamp, syncForceWrite,
+                        stagingTable, conflictsTable, senderScopeId,
                         schemaChangesTable, columns, sqliteConn, sqliteTx).ConfigureAwait(false);
 
-                // 4. Surface conflict rows
+                // 5. Surface conflict rows back to the orchestrator
                 await ReadSqliteConflictRowsAsync(
-                    stagingTable, senderScopeId, lastTimestamp, syncForceWrite,
-                    items, schemaChangesTable, columns, failedRows,
+                    conflictsTable, items, schemaChangesTable, columns, failedRows,
                     sqliteConn, sqliteTx).ConfigureAwait(false);
             }
             finally
             {
-                // 5. Drop staging table
+                // 6. Drop temp tables
                 await ExecuteNonQueryAsync(
                     $"DROP TABLE IF EXISTS [{stagingTable}]", sqliteConn, sqliteTx).ConfigureAwait(false);
+                await ExecuteNonQueryAsync(
+                    $"DROP TABLE IF EXISTS [{conflictsTable}]", sqliteConn, sqliteTx).ConfigureAwait(false);
 
-                // 6. Restore triggers exactly as captured so future non-bulk
+                // 7. Restore triggers exactly as captured so future non-bulk
                 // operations (or direct user writes) keep tracking the table.
                 await RestoreTriggersAsync(savedTriggers, sqliteConn, sqliteTx).ConfigureAwait(false);
             }
@@ -224,7 +243,7 @@ namespace Dotmim.Sync.Sqlite
         }
 
         // -----------------------------------------------------------------------
-        // 1. CREATE TEMP TABLE
+        // 1. CREATE TEMP TABLES (staging + conflicts)
         // -----------------------------------------------------------------------
 
         private static async Task CreateSqliteStagingTableAsync(
@@ -259,6 +278,90 @@ namespace Dotmim.Sync.Sqlite
             sb.Append(')');
 
             await ExecuteNonQueryAsync(sb.ToString(), connection, transaction).ConfigureAwait(false);
+        }
+
+        // PK-only temp table used to capture the conflict set BEFORE the bulk
+        // apply.  Reused later to (a) exclude conflict rows from the data/tracking
+        // writes and (b) read back the conflict PK list for the orchestrator.
+        private static async Task CreateSqliteConflictsTableAsync(
+            string conflictsTable, List<SqliteBulkColumnInfo> columns,
+            SqliteConnection connection, SqliteTransaction transaction)
+        {
+            var pkCols = columns.Where(c => c.IsPrimaryKey).ToList();
+            if (pkCols.Count == 0)
+                return;
+
+            var sb = new StringBuilder();
+            sb.Append("CREATE TEMP TABLE [").Append(conflictsTable).Append("] (");
+            for (int i = 0; i < pkCols.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(pkCols[i].QuotedShortName).Append(' ').Append(pkCols[i].DbTypeDeclaration);
+            }
+
+            sb.Append(", PRIMARY KEY (");
+            for (int i = 0; i < pkCols.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(pkCols[i].QuotedShortName);
+            }
+            sb.Append("))");
+
+            await ExecuteNonQueryAsync(sb.ToString(), connection, transaction).ConfigureAwait(false);
+        }
+
+        // Populate the conflicts table BEFORE the bulk apply so it reflects the
+        // pre-bulk tracking state.  A "conflict" is a staging row whose tracking
+        // row has a timestamp >= the sync min timestamp (i.e. there was a local
+        // change after the last sync) AND was tagged with a different scope_id
+        // than the sender (using `IS NOT`, which is NULL-safe so rows tagged
+        // `update_scope_id = NULL` by the user-facing triggers are included).
+        private static async Task CaptureSqliteConflictPksAsync(
+            string stagingTable, string conflictsTable,
+            Guid senderScopeId, long? lastTimestamp, int syncForceWrite,
+            SyncTable schemaChangesTable, List<SqliteBulkColumnInfo> columns,
+            SqliteConnection connection, SqliteTransaction transaction)
+        {
+            // No min timestamp / forced reinit => everything is unconditionally applied.
+            if (syncForceWrite == 1 || lastTimestamp == null)
+                return;
+
+            var pkCols = columns.Where(c => c.IsPrimaryKey).ToList();
+            if (pkCols.Count == 0)
+                return;
+
+            var names = new SqliteObjectNames(
+                schemaChangesTable, new ScopeInfo { Setup = new SyncSetup() }, false);
+            var trackingQ = names.TrackingTableQuotedShortName;
+
+            var sb = new StringBuilder();
+            sb.Append("INSERT INTO [").Append(conflictsTable).Append("] (");
+            for (int i = 0; i < pkCols.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(pkCols[i].QuotedShortName);
+            }
+            sb.AppendLine(")");
+
+            sb.Append("SELECT ");
+            for (int i = 0; i < pkCols.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append("t.").Append(pkCols[i].QuotedShortName);
+            }
+            sb.AppendLine();
+            sb.Append("FROM [").Append(stagingTable).AppendLine("] t");
+            sb.Append("JOIN ").Append(trackingQ).Append(" [side] ON ")
+              .AppendLine(SqliteJoinOnPk(pkCols, "t", "[side]"));
+            sb.AppendLine("WHERE [side].[timestamp] >= @sync_min_timestamp");
+            sb.AppendLine("  AND [side].[update_scope_id] IS NOT @sync_scope_id;");
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = sb.ToString();
+            cmd.Transaction = transaction;
+            cmd.Parameters.AddWithValue("@sync_min_timestamp", lastTimestamp.Value);
+            cmd.Parameters.AddWithValue("@sync_scope_id", senderScopeId.ToString());
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
         // -----------------------------------------------------------------------
@@ -371,11 +474,12 @@ namespace Dotmim.Sync.Sqlite
         }
 
         // -----------------------------------------------------------------------
-        // 3a. BULK UPSERT
+        // 3a. BULK UPSERT (excludes pre-captured conflict rows)
         // -----------------------------------------------------------------------
 
         private static async Task BulkApplySqliteUpsertAsync(
-            string stagingTable, Guid senderScopeId, long? lastTimestamp, int syncForceWrite,
+            string stagingTable, string conflictsTable,
+            Guid senderScopeId,
             SyncTable schemaChangesTable, List<SqliteBulkColumnInfo> columns,
             SqliteConnection connection, SqliteTransaction transaction)
         {
@@ -391,45 +495,35 @@ namespace Dotmim.Sync.Sqlite
             var tableQ = names.TableQuotedShortName;
             var trackingQ = names.TrackingTableQuotedShortName;
 
+            // "Eligible" = staging rows that are NOT in the pre-captured
+            // conflicts table.  Used to filter both the base INSERT and the
+            // tracking write so each row is touched by exactly one bulk path.
+            // (Conflict rows are left alone here and surfaced to the orchestrator
+            // by ReadSqliteConflictRowsAsync.)
+            string EligibleFilter() =>
+                "NOT EXISTS (SELECT 1 FROM [" + conflictsTable + "] c WHERE "
+                + SqliteJoinOnPk(pkCols, "t", "c") + ")";
+
             var sb = new StringBuilder();
 
-            // -- CHANGESET CTE: staging rows that pass the timestamp guard.
-            //    Result is consumed by both the data insert and the tracking insert
-            //    below, but SQLite re-evaluates a CTE per reference unless we
-            //    materialise it.  Since this batch only runs once we accept the
-            //    duplication here in exchange for a simpler/lighter SQL.
-            sb.AppendLine("WITH CHANGESET AS (");
-            sb.Append("  SELECT ");
-            for (int i = 0; i < columns.Count; i++)
-            {
-                if (i > 0) sb.Append(", ");
-                sb.Append("t.").Append(columns[i].QuotedShortName);
-            }
-
-            sb.AppendLine();
-            sb.Append("  FROM [").Append(stagingTable).AppendLine("] t");
-            sb.Append("  LEFT JOIN ").Append(trackingQ).Append(" [side] ON ")
-              .AppendLine(SqliteJoinOnPk(pkCols, "t", "[side]"));
-            sb.Append("  LEFT JOIN ").Append(tableQ).Append(" [base] ON ")
-              .AppendLine(SqliteJoinOnPk(pkCols, "t", "[base]"));
-            sb.AppendLine("  WHERE ([side].[timestamp] < @sync_min_timestamp");
-            sb.AppendLine("      OR [side].[update_scope_id] = @sync_scope_id)");
-            sb.Append("    OR ([base].").Append(pkCols[0].QuotedShortName).AppendLine(" IS NULL");
-            sb.AppendLine("        AND ([side].[timestamp] < @sync_min_timestamp");
-            sb.AppendLine("            OR [side].[timestamp] IS NULL))");
-            sb.AppendLine("    OR @sync_force_write = 1");
-            sb.AppendLine(");");
-
-            // -- INSERT … ON CONFLICT DO UPDATE
+            // -- INSERT … ON CONFLICT DO UPDATE for every eligible staging row.
             sb.Append("INSERT INTO ").Append(tableQ).Append(" (");
             for (int i = 0; i < columns.Count; i++)
             {
                 if (i > 0) sb.Append(", ");
                 sb.Append(columns[i].QuotedShortName);
             }
-
             sb.AppendLine(")");
-            sb.AppendLine("SELECT * FROM CHANGESET WHERE TRUE");
+
+            sb.Append("SELECT ");
+            for (int i = 0; i < columns.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append("t.").Append(columns[i].QuotedShortName);
+            }
+            sb.AppendLine();
+            sb.Append("FROM [").Append(stagingTable).AppendLine("] t");
+            sb.Append("WHERE ").AppendLine(EligibleFilter());
 
             var pkList = string.Join(", ", pkCols.Select(c => c.QuotedShortName));
             if (mutableCols.Count > 0)
@@ -441,7 +535,6 @@ namespace Dotmim.Sync.Sqlite
                     sb.Append("  ").Append(mutableCols[i].QuotedShortName)
                       .Append(" = excluded.").Append(mutableCols[i].QuotedShortName);
                 }
-
                 sb.AppendLine(";");
             }
             else
@@ -449,50 +542,46 @@ namespace Dotmim.Sync.Sqlite
                 sb.Append("ON CONFLICT (").Append(pkList).AppendLine(") DO NOTHING;");
             }
 
-            // -- Update tracking for every applied row.  Triggers are dropped during
-            //    the bulk apply, so this is the only tracking write per row.
+            // -- Force-write tracking for every eligible staging row.  We use
+            //    INSERT OR REPLACE unconditionally (no eligibility WHERE here):
+            //    if user triggers happened to fire during the INSERT above and
+            //    wrote tracking rows with update_scope_id = NULL, the REPLACE
+            //    overwrites them with the correct sender scope + timestamp.
+            //    This is the key fix that prevents the post-bulk conflict
+            //    detection from flagging every applied row as a conflict.
             sb.Append("INSERT OR REPLACE INTO ").Append(trackingQ).Append(" (");
             for (int i = 0; i < pkCols.Count; i++)
             {
                 if (i > 0) sb.Append(", ");
                 sb.Append(pkCols[i].QuotedShortName);
             }
-
             sb.AppendLine(", [update_scope_id], [sync_row_is_tombstone], [timestamp], [last_change_datetime])");
+
             sb.Append("SELECT ");
             for (int i = 0; i < pkCols.Count; i++)
             {
                 if (i > 0) sb.Append(", ");
                 sb.Append("t.").Append(pkCols[i].QuotedShortName);
             }
-
             sb.Append(", @sync_scope_id, 0, ").Append(SqliteObjectNames.TimestampValue)
               .AppendLine(", datetime('now')");
             sb.Append("FROM [").Append(stagingTable).AppendLine("] t");
-            sb.Append("LEFT JOIN ").Append(trackingQ).Append(" [side] ON ")
-              .AppendLine(SqliteJoinOnPk(pkCols, "t", "[side]"));
-            sb.Append("LEFT JOIN ").Append(tableQ).Append(" [base] ON ")
-              .AppendLine(SqliteJoinOnPk(pkCols, "t", "[base]"));
-            sb.AppendLine("WHERE ([side].[timestamp] < @sync_min_timestamp");
-            sb.AppendLine("    OR [side].[update_scope_id] = @sync_scope_id)");
-            sb.Append("  OR ([base].").Append(pkCols[0].QuotedShortName).AppendLine(" IS NULL");
-            sb.AppendLine("      AND ([side].[timestamp] < @sync_min_timestamp");
-            sb.AppendLine("          OR [side].[timestamp] IS NULL))");
-            sb.AppendLine("  OR @sync_force_write = 1;");
+            sb.Append("WHERE ").Append(EligibleFilter()).AppendLine(";");
 
             using var cmd = connection.CreateCommand();
             cmd.CommandText = sb.ToString();
             cmd.Transaction = transaction;
-            AddSqliteBatchParameters(cmd, senderScopeId, lastTimestamp, syncForceWrite);
+            cmd.Parameters.AddWithValue("@sync_scope_id", senderScopeId.ToString());
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
         // -----------------------------------------------------------------------
-        // 3b. BULK DELETE
+        // 3b. BULK DELETE (excludes pre-captured conflict rows)
         // -----------------------------------------------------------------------
 
         private static async Task BulkApplySqliteDeleteAsync(
-            string stagingTable, Guid senderScopeId, long? lastTimestamp, int syncForceWrite,
+            string stagingTable, string conflictsTable,
+            Guid senderScopeId,
             SyncTable schemaChangesTable, List<SqliteBulkColumnInfo> columns,
             SqliteConnection connection, SqliteTransaction transaction)
         {
@@ -503,111 +592,82 @@ namespace Dotmim.Sync.Sqlite
             var tableQ = names.TableQuotedShortName;
             var trackingQ = names.TrackingTableQuotedShortName;
 
+            string EligibleFilter(string stagingAlias) =>
+                "NOT EXISTS (SELECT 1 FROM [" + conflictsTable + "] c WHERE "
+                + SqliteJoinOnPk(pkCols, stagingAlias, "c") + ")";
+
             var sb = new StringBuilder();
 
-            // Delete eligible rows from target.  The previous version had a bug
-            // where `OR @sync_force_write = 1` lived OUTSIDE the EXISTS subquery,
-            // which would delete EVERY row in the table on a reinitialize.  Move
-            // the force-write override inside the subquery's WHERE so it still
-            // requires a matching staging row.
+            // -- Delete eligible rows from the target table.
             sb.Append("DELETE FROM ").AppendLine(tableQ);
             sb.AppendLine("WHERE EXISTS (");
             sb.Append("  SELECT 1 FROM [").Append(stagingTable).AppendLine("] t");
-            sb.Append("  LEFT JOIN ").Append(trackingQ).Append(" [side] ON ")
-              .AppendLine(SqliteJoinOnPk(pkCols, "t", "[side]"));
             sb.Append("  WHERE ").AppendLine(SqliteJoinOnPk(pkCols, "t", tableQ));
-            sb.AppendLine("    AND (");
-            sb.AppendLine("      ([side].[timestamp] < @sync_min_timestamp");
-            sb.AppendLine("        OR [side].[timestamp] IS NULL");
-            sb.AppendLine("        OR [side].[update_scope_id] = @sync_scope_id)");
-            sb.AppendLine("      OR @sync_force_write = 1");
-            sb.AppendLine("    )");
+            sb.Append("    AND ").AppendLine(EligibleFilter("t"));
             sb.AppendLine(");");
 
-            // Tombstone tracking for each eligible row.  Again, with triggers
-            // disabled, this is the only tracking write per row.
+            // -- Tombstone tracking for every eligible staging row.  See the
+            //    comment in BulkApplySqliteUpsertAsync for why this is unconditional.
             sb.Append("INSERT OR REPLACE INTO ").Append(trackingQ).Append(" (");
             for (int i = 0; i < pkCols.Count; i++)
             {
                 if (i > 0) sb.Append(", ");
                 sb.Append(pkCols[i].QuotedShortName);
             }
-
             sb.AppendLine(", [update_scope_id], [sync_row_is_tombstone], [timestamp], [last_change_datetime])");
+
             sb.Append("SELECT ");
             for (int i = 0; i < pkCols.Count; i++)
             {
                 if (i > 0) sb.Append(", ");
                 sb.Append("t.").Append(pkCols[i].QuotedShortName);
             }
-
             sb.Append(", @sync_scope_id, 1, ").Append(SqliteObjectNames.TimestampValue)
               .AppendLine(", datetime('now')");
             sb.Append("FROM [").Append(stagingTable).AppendLine("] t");
-            sb.Append("LEFT JOIN ").Append(trackingQ).Append(" [side] ON ")
-              .AppendLine(SqliteJoinOnPk(pkCols, "t", "[side]"));
-            sb.AppendLine("WHERE ([side].[timestamp] < @sync_min_timestamp");
-            sb.AppendLine("    OR [side].[timestamp] IS NULL");
-            sb.AppendLine("    OR [side].[update_scope_id] = @sync_scope_id)");
-            sb.AppendLine("  OR @sync_force_write = 1;");
+            sb.Append("WHERE ").Append(EligibleFilter("t")).AppendLine(";");
 
             using var cmd = connection.CreateCommand();
             cmd.CommandText = sb.ToString();
             cmd.Transaction = transaction;
-            AddSqliteBatchParameters(cmd, senderScopeId, lastTimestamp, syncForceWrite);
+            cmd.Parameters.AddWithValue("@sync_scope_id", senderScopeId.ToString());
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
         // -----------------------------------------------------------------------
-        // 4. CONFLICT DETECTION
+        // 4. CONFLICT SURFACING (reads from the pre-captured conflicts table)
         // -----------------------------------------------------------------------
 
         private static async Task ReadSqliteConflictRowsAsync(
-            string stagingTable, Guid senderScopeId, long? lastTimestamp, int syncForceWrite,
-            IList<SyncRow> items, SyncTable schemaChangesTable,
+            string conflictsTable, IList<SyncRow> items, SyncTable schemaChangesTable,
             List<SqliteBulkColumnInfo> columns, SyncTable failedRows,
             SqliteConnection connection, SqliteTransaction transaction)
         {
-            if (syncForceWrite == 1 || lastTimestamp == null)
-                return;
-
-            var names = new SqliteObjectNames(
-                schemaChangesTable, new ScopeInfo { Setup = new SyncSetup() }, false);
-
             var pkCols = columns.Where(c => c.IsPrimaryKey).ToList();
-            var trackingQ = names.TrackingTableQuotedShortName;
+            if (pkCols.Count == 0)
+                return;
 
             var sb = new StringBuilder();
             sb.Append("SELECT ");
             for (int i = 0; i < pkCols.Count; i++)
             {
                 if (i > 0) sb.Append(", ");
-                sb.Append("t.").Append(pkCols[i].QuotedShortName);
+                sb.Append(pkCols[i].QuotedShortName);
             }
-
             sb.AppendLine();
-            sb.Append("FROM [").Append(stagingTable).AppendLine("] t");
-            sb.Append("JOIN ").Append(trackingQ).Append(" [side] ON ")
-              .AppendLine(SqliteJoinOnPk(pkCols, "t", "[side]"));
-            sb.AppendLine("WHERE [side].[timestamp] >= @sync_min_timestamp");
-            sb.AppendLine("  AND [side].[update_scope_id] != @sync_scope_id;");
+            sb.Append("FROM [").Append(conflictsTable).AppendLine("];");
 
             using var cmd = connection.CreateCommand();
             cmd.CommandText = sb.ToString();
             cmd.Transaction = transaction;
-            cmd.Parameters.AddWithValue("@sync_min_timestamp", lastTimestamp.Value);
-            cmd.Parameters.AddWithValue("@sync_scope_id", senderScopeId.ToString());
 
-            // Hash conflict PK sets by canonical string key so matching against
-            // the source items is O(N) rather than O(N * conflicts).
             HashSet<string> conflictKeys = null;
             using (var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false))
             {
                 while (await reader.ReadAsync().ConfigureAwait(false))
                 {
                     conflictKeys ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    var key = BuildPkKey(reader, pkCols.Count);
-                    conflictKeys.Add(key);
+                    conflictKeys.Add(BuildPkKey(reader, pkCols.Count));
                 }
             }
 
@@ -615,7 +675,6 @@ namespace Dotmim.Sync.Sqlite
                 return;
 
             var pkSchemaIndices = pkCols.Select(c => c.Index).ToArray();
-
             foreach (var row in items)
             {
                 var key = BuildPkKey(row, pkSchemaIndices);
@@ -692,15 +751,6 @@ namespace Dotmim.Sync.Sqlite
             }
 
             return sb.ToString();
-        }
-
-        private static void AddSqliteBatchParameters(
-            SqliteCommand cmd, Guid senderScopeId, long? lastTimestamp, int syncForceWrite)
-        {
-            cmd.Parameters.AddWithValue(
-                "@sync_min_timestamp", lastTimestamp.HasValue ? (object)lastTimestamp.Value : DBNull.Value);
-            cmd.Parameters.AddWithValue("@sync_scope_id", senderScopeId.ToString());
-            cmd.Parameters.AddWithValue("@sync_force_write", syncForceWrite);
         }
 
         private static object ConvertToSqliteValue(object value, SqliteBulkColumnInfo col)

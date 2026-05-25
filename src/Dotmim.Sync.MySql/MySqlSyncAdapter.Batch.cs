@@ -356,8 +356,13 @@ namespace Dotmim.Sync.MySql
             sb.AppendLine($"SELECT {string.Join(", ", pkCols.Select(c => $"t.{Q(c.ColumnName)}"))}");
             sb.AppendLine($"FROM `{stagingTable}` t");
             sb.AppendLine($"JOIN {trackingQ} side ON {MySqlJoinOnPk(pkCols, "t", "side")}");
+            // Use the NULL-safe equality operator (`<=>`) so locally-modified
+            // rows tagged with `update_scope_id = NULL` by the user-facing
+            // triggers are still surfaced as conflicts.  Plain `!=` evaluates
+            // to NULL when either operand is NULL, which is falsy in a WHERE
+            // and would silently drop those rows from the conflict set.
             sb.AppendLine("WHERE side.`timestamp` > @sync_min_timestamp");
-            sb.AppendLine("  AND side.`update_scope_id` != @sync_scope_id;");
+            sb.AppendLine("  AND NOT (side.`update_scope_id` <=> @sync_scope_id);");
 
             using var cmd = connection.CreateCommand();
             cmd.CommandText = sb.ToString();
