@@ -458,6 +458,11 @@ namespace Dotmim.Sync.Web.Client
             requestMessage.Headers.Add("dotmim-sync-serialization-format", serializerInfoJsonBytes.ToUtf8String());
             requestMessage.Headers.Add("dotmim-sync-version", SyncVersion.Current.ToString());
 
+            // Tell the server when the client wants resumable behavior so the server can keep partial
+            // batch folders alive across requests instead of cleaning them aggressively.
+            if (this.Options != null && this.Options.Resumable)
+                requestMessage.Headers.Add("dotmim-sync-resumable", "true");
+
             if (!string.IsNullOrEmpty(this.Identifier))
                 requestMessage.Headers.Add("dotmim-sync-identifier", this.Identifier);
 

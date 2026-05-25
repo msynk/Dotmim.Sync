@@ -21,6 +21,19 @@ namespace Dotmim.Sync
             => this.SynchronizeAsync(SyncOptions.DefaultScopeName, null, SyncType.Normal, null, progress, CancellationToken.None);
 
         /// <summary>
+        /// Launch a Synchronization based on scope DefaultScope, optionally enabling resumable transport
+        /// for this call. See <see cref="SyncOptions.Resumable"/> for the full description of the
+        /// resumable behavior.
+        /// </summary>
+        /// <param name="resumable">When <c>true</c>, the sync transfer can resume from the last
+        /// successfully transferred batch on the next call if this one is interrupted. When <c>false</c>,
+        /// the historical all-or-nothing behavior is used.</param>
+        /// <param name="progress">IProgress instance to get a progression status during sync.</param>
+        /// <returns>Computed sync results.</returns>
+        public Task<SyncResult> SynchronizeAsync(bool resumable, IProgress<ProgressArgs> progress = null)
+            => this.SynchronizeAsync(SyncOptions.DefaultScopeName, null, SyncType.Normal, null, resumable, progress, CancellationToken.None);
+
+        /// <summary>
         /// Launch a Synchronization based on scope DefaultScope.
         /// </summary>
         /// <param name="parameters">Parameters values for each of your setup filters.</param>
@@ -30,6 +43,18 @@ namespace Dotmim.Sync
             => this.SynchronizeAsync(SyncOptions.DefaultScopeName, null, SyncType.Normal, parameters, progress, CancellationToken.None);
 
         /// <summary>
+        /// Launch a Synchronization based on scope DefaultScope, optionally enabling resumable transport
+        /// for this call.
+        /// </summary>
+        /// <param name="parameters">Parameters values for each of your setup filters.</param>
+        /// <param name="resumable">When <c>true</c>, the sync transfer can resume from the last
+        /// successfully transferred batch on the next call if this one is interrupted.</param>
+        /// <param name="progress">IProgress instance to get a progression status during sync.</param>
+        /// <returns>Computed sync results.</returns>
+        public Task<SyncResult> SynchronizeAsync(SyncParameters parameters, bool resumable, IProgress<ProgressArgs> progress = null)
+            => this.SynchronizeAsync(SyncOptions.DefaultScopeName, null, SyncType.Normal, parameters, resumable, progress, CancellationToken.None);
+
+        /// <summary>
         /// Launch a Synchronization based on scope DefaultScope.
         /// </summary>
         /// <param name="syncType">Synchronization mode: Normal, Reinitialize or ReinitializeWithUpload.</param>
@@ -37,6 +62,18 @@ namespace Dotmim.Sync
         /// <returns>Computed sync results.</returns>
         public Task<SyncResult> SynchronizeAsync(SyncType syncType, IProgress<ProgressArgs> progress = null)
             => this.SynchronizeAsync(SyncOptions.DefaultScopeName, null, syncType, null, progress, CancellationToken.None);
+
+        /// <summary>
+        /// Launch a Synchronization based on scope DefaultScope, optionally enabling resumable transport
+        /// for this call.
+        /// </summary>
+        /// <param name="syncType">Synchronization mode: Normal, Reinitialize or ReinitializeWithUpload.</param>
+        /// <param name="resumable">When <c>true</c>, the sync transfer can resume from the last
+        /// successfully transferred batch on the next call if this one is interrupted.</param>
+        /// <param name="progress">IProgress instance to get a progression status during sync.</param>
+        /// <returns>Computed sync results.</returns>
+        public Task<SyncResult> SynchronizeAsync(SyncType syncType, bool resumable, IProgress<ProgressArgs> progress = null)
+            => this.SynchronizeAsync(SyncOptions.DefaultScopeName, null, syncType, null, resumable, progress, CancellationToken.None);
 
         /// <summary>
         /// Launch a Synchronization based on scope DefaultScope.

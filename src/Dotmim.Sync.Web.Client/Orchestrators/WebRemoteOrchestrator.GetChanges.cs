@@ -145,7 +145,16 @@ namespace Dotmim.Sync.Web.Client
             } // throw client error
         }
 
-        private async Task DownladBatchInfoAsync(SyncContext context, SyncSet schema, BatchInfo serverBatchInfo, HttpMessageSummaryResponse summary, IProgress<ProgressArgs> progress, CancellationToken cancellationToken)
+        /// <summary>
+        /// Downloads all the batch parts described by <paramref name="serverBatchInfo"/> from the server,
+        /// in parallel up to <see cref="MaxDownladingDegreeOfParallelism"/>, then sends a final
+        /// <see cref="HttpStep.SendEndDownloadChanges"/> message so the server can release its tmp folder.
+        /// <para>
+        /// Marked virtual so resumable orchestrators can override the loop to skip already-downloaded
+        /// batches and to defer the end-of-download ack until the local apply succeeds.
+        /// </para>
+        /// </summary>
+        protected internal virtual async Task DownladBatchInfoAsync(SyncContext context, SyncSet schema, BatchInfo serverBatchInfo, HttpMessageSummaryResponse summary, IProgress<ProgressArgs> progress, CancellationToken cancellationToken)
         {
             // If we have a snapshot we are raising the batches downloading process that will occurs
             await this.InterceptAsync(new HttpBatchesDownloadingArgs(context, serverBatchInfo, this.GetServiceHost()), progress, cancellationToken).ConfigureAwait(false);
@@ -169,7 +178,14 @@ namespace Dotmim.Sync.Web.Client
             await this.InterceptAsync(new HttpBatchesDownloadedArgs(summary, context, this.GetServiceHost()), progress, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task DownloadBatchPartInfoAsync(SyncContext context, SyncSet schema, BatchInfo serverBatchInfo, BatchPartInfo bpi, HttpStep step, IProgress<ProgressArgs> progress, CancellationToken cancellationToken)
+        /// <summary>
+        /// Downloads a single <paramref name="bpi"/> batch part from the server into
+        /// <paramref name="serverBatchInfo"/>'s directory.
+        /// <para>
+        /// Marked virtual so resumable orchestrators can wrap this to record progress on disk.
+        /// </para>
+        /// </summary>
+        protected internal virtual async Task DownloadBatchPartInfoAsync(SyncContext context, SyncSet schema, BatchInfo serverBatchInfo, BatchPartInfo bpi, HttpStep step, IProgress<ProgressArgs> progress, CancellationToken cancellationToken)
         {
             if (cancellationToken.IsCancellationRequested)
                 return;

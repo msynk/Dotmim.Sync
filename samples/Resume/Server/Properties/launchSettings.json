@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "Dotmim.Sync.Samples.Resume.Server": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:7393;http://localhost:5393",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

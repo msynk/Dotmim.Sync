@@ -105,6 +105,37 @@ namespace Dotmim.Sync
         public TransactionMode TransactionMode { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the current sync session is resumable.
+        /// <para>
+        /// When set to <c>true</c>, the sync transfer layer keeps enough state on both sides to resume
+        /// an interrupted sync from the last successfully transferred batch on the next
+        /// <c>SynchronizeAsync</c> call instead of starting from scratch.
+        /// </para>
+        /// <para>
+        /// This is opt-in and defaults to <c>false</c> to preserve the historical all-or-nothing behavior.
+        /// You can also toggle it for a single sync call by using the <c>SynchronizeAsync</c> overload
+        /// that accepts a <c>resumable</c> argument.
+        /// </para>
+        /// </summary>
+        public bool Resumable { get; set; }
+
+        /// <summary>
+        /// Gets or sets an optional factory used to compute the <see cref="SyncContext.SessionId"/> at the
+        /// start of a sync session.
+        /// <para>
+        /// When <c>null</c> (default), a fresh <see cref="Guid.NewGuid"/> is allocated on every sync,
+        /// matching the historical behavior.
+        /// </para>
+        /// <para>
+        /// When set, the <c>SyncAgent</c> calls this factory with the scope name and uses the returned
+        /// <see cref="Guid"/> as the session id. This is the seam used by the resumable orchestrators to
+        /// reattach to a previously interrupted sync session, but it is intentionally a generic hook so
+        /// other scenarios (sticky session ids, externally-issued session ids) can leverage it too.
+        /// </para>
+        /// </summary>
+        public Func<string, Guid> SessionIdProvider { get; set; }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="SyncOptions"/> class.
         /// Create a new instance of options with default values.
         /// </summary>
@@ -121,6 +152,8 @@ namespace Dotmim.Sync
             this.Logger = new SyncLogger().AddDebug();
             this.ProgressLevel = SyncProgressLevel.Information;
             this.TransactionMode = TransactionMode.AllOrNothing;
+            this.Resumable = false;
+            this.SessionIdProvider = null;
         }
 
         /// <summary>

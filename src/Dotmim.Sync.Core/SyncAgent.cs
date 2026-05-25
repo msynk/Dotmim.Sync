@@ -136,6 +136,42 @@ namespace Dotmim.Sync
         }
 
         /// <summary>
+        /// Launch a synchronization with the specified mode, toggling the resumable transport behavior
+        /// for the duration of this call.
+        /// <para>
+        /// When <paramref name="resumable"/> is <c>true</c>, an interrupted sync (network drop, process
+        /// kill, app suspend) keeps its progress on disk and the next call to
+        /// <c>SynchronizeAsync</c> resumes from the last successfully transferred batch instead of
+        /// restarting from scratch.
+        /// </para>
+        /// <para>
+        /// When <paramref name="resumable"/> is <c>false</c> (default), the historical all-or-nothing
+        /// behavior is preserved.
+        /// </para>
+        /// <para>
+        /// This temporarily overrides <see cref="SyncOptions.Resumable"/> for the duration of the call.
+        /// To make resumable the default, set <see cref="SyncOptions.Resumable"/> on your options instance.
+        /// </para>
+        /// </summary>
+        public async Task<SyncResult> SynchronizeAsync(string scopeName, SyncSetup setup, SyncType syncType, SyncParameters parameters, bool resumable, IProgress<ProgressArgs> progress = default, CancellationToken cancellationToken = default)
+        {
+            // Toggle the option for the duration of this call only.
+            var previousResumable = this.Options?.Resumable ?? false;
+            if (this.Options != null)
+                this.Options.Resumable = resumable;
+
+            try
+            {
+                return await this.SynchronizeAsync(scopeName, setup, syncType, parameters, progress, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (this.Options != null)
+                    this.Options.Resumable = previousResumable;
+            }
+        }
+
+        /// <summary>
         /// Launch a synchronization with the specified mode.
         /// </summary>
         public async Task<SyncResult> SynchronizeAsync(string scopeName, SyncSetup setup, SyncType syncType, SyncParameters parameters, IProgress<ProgressArgs> progress = default, CancellationToken cancellationToken = default)
@@ -154,8 +190,13 @@ namespace Dotmim.Sync
             // Lock sync to prevent multi call to sync at the same time
             this.LockSync();
 
+            // Allow callers (notably the resumable web orchestrators) to override the session id so an
+            // interrupted sync can reattach to a previous session instead of starting a fresh one.
+            // When no provider is registered the historical Guid.NewGuid() behavior is preserved.
+            var sessionId = this.Options?.SessionIdProvider?.Invoke(scopeName) ?? Guid.NewGuid();
+
             // Context, used to back and forth data between servers
-            var context = new SyncContext(Guid.NewGuid(), scopeName)
+            var context = new SyncContext(sessionId, scopeName)
             {
                 // if any parameters, set in context
                 Parameters = parameters,
@@ -163,7 +204,6 @@ namespace Dotmim.Sync
                 // set sync type (Normal, Reinitialize, ReinitializeWithUpload)
                 SyncType = syncType,
             };
-
             // Result, with sync results stats.
             var result = new SyncResult(context.SessionId)
             {

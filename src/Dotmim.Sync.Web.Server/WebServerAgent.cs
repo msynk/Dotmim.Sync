@@ -3,6 +3,7 @@ using Dotmim.Sync.Enumerations;
 using Dotmim.Sync.Extensions;
 using Dotmim.Sync.Serialization;
 using Dotmim.Sync.Web.Client;
+using Dotmim.Sync.Web.Server.Resume;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
@@ -325,12 +326,19 @@ namespace Dotmim.Sync.Web.Server
                     && !isMigratedScope)
                     throw new HttpScopeNameFromClientIsInvalidException(scopeName, this.ScopeName);
 
-                // load session
-                await httpContext.Session.LoadAsync(cancellationToken).ConfigureAwait(false);
+                // Resumable clients communicate their intent through this header so the server can
+                // keep partial folders around across requests. When the header is absent (or false),
+                // we fall back to the historical CleanFolder behavior.
+                var resumable = TryGetHeaderValue(httpContext.Request.Headers, "dotmim-sync-resumable", out string resumableHeader)
+                    && bool.TryParse(resumableHeader, out var parsed) && parsed;
 
-                // Get schema and clients batch infos / summaries, from session
-                // var schema = httpContext.Session.Get<SyncSet>(scopeName);
-                var sessionCache = httpContext.Session.Get<SessionCache>(sessionId);
+                // Pull the cache from the configured store (defaults to ASP.NET ISession).
+                var sessionStore = this.WebServerOptions.SessionStore ?? new AspNetSessionWebServerSessionStore();
+                var sessionCache = await sessionStore.LoadAsync(httpContext, sessionId, cancellationToken).ConfigureAwait(false);
+
+                // We still load ISession for the legacy schema cache lookups below (httpContext.Session.Set(scopeName, ...))
+                // and for the secondary "session_id" sentinel used to detect cross-session bleed.
+                await httpContext.Session.LoadAsync(cancellationToken).ConfigureAwait(false);
 
                 // HttpStep.EnsureSchema is the first call from client when client is new
                 // HttpStep.EnsureScopes is the first call from client when client is not new
@@ -339,7 +347,7 @@ namespace Dotmim.Sync.Web.Server
                     (step == HttpStep.EnsureSchema || step == HttpStep.EnsureScopes || step == HttpStep.GetRemoteClientTimestamp))
                 {
                     sessionCache = new SessionCache();
-                    httpContext.Session.Set(sessionId, sessionCache);
+                    await sessionStore.SaveAsync(httpContext, sessionId, sessionCache, cancellationToken).ConfigureAwait(false);
                     httpContext.Session.SetString("session_id", sessionId);
                 }
 
@@ -351,8 +359,18 @@ namespace Dotmim.Sync.Web.Server
                 // check session id
                 var tempSessionId = httpContext.Session.GetString("session_id");
 
-                if (string.IsNullOrEmpty(tempSessionId) || tempSessionId != sessionId)
+                // Resumable clients carry the same session id across requests but the server's ISession
+                // sentinel may have evicted the marker (cookie expiry, in-memory cache flush...). When the
+                // session cache itself was loaded successfully from the store, treat the missing marker as
+                // benign and re-prime it instead of failing.
+                if (string.IsNullOrEmpty(tempSessionId))
+                {
+                    httpContext.Session.SetString("session_id", sessionId);
+                }
+                else if (tempSessionId != sessionId)
+                {
                     throw new HttpSessionLostException(sessionId);
+                }
 
                 // Get the serializer and batchsize
                 (var clientBatchSize, var clientSerializerFactory) = this.GetClientSerializer(serializerInfoString);
@@ -437,7 +455,7 @@ namespace Dotmim.Sync.Web.Server
                     case HttpStep.SendChangesInProgress:
                         var sendChangesRequest = (HttpMessageSendChangesRequest)messsageRequest;
                         await this.RemoteOrchestrator.InterceptAsync(new HttpGettingClientChangesArgs(sendChangesRequest, httpContext.Request.Host.Host, sessionCache), progress, cancellationToken).ConfigureAwait(false);
-                        messageResponse = await this.ApplyThenGetChangesAsync2(httpContext, sendChangesRequest, sessionCache, clientBatchSize, progress, cancellationToken).ConfigureAwait(false);
+                        messageResponse = await this.ApplyThenGetChangesAsync2(httpContext, sendChangesRequest, sessionCache, clientBatchSize, resumable, progress, cancellationToken).ConfigureAwait(false);
                         break;
                     case HttpStep.GetMoreChanges:
                         messageResponse = await this.GetMoreChangesAsync(httpContext, (HttpMessageGetMoreChangesRequest)messsageRequest, sessionCache, progress, cancellationToken).ConfigureAwait(false);
@@ -451,7 +469,7 @@ namespace Dotmim.Sync.Web.Server
                         messageResponse = await this.GetSnapshotSummaryAsync(httpContext, (HttpMessageSendChangesRequest)messsageRequest, sessionCache, progress, cancellationToken).ConfigureAwait(false);
                         break;
                     case HttpStep.SendEndDownloadChanges:
-                        messageResponse = await this.SendEndDownloadChangesAsync(httpContext, (HttpMessageGetMoreChangesRequest)messsageRequest, sessionCache, progress, cancellationToken).ConfigureAwait(false);
+                        messageResponse = await this.SendEndDownloadChangesAsync(httpContext, (HttpMessageGetMoreChangesRequest)messsageRequest, sessionCache, resumable, progress, cancellationToken).ConfigureAwait(false);
                         break;
                     case HttpStep.GetEstimatedChangesCount:
                         messageResponse = await this.GetEstimatedChangesCountAsync(httpContext, (HttpMessageSendChangesRequest)messsageRequest, progress, cancellationToken).ConfigureAwait(false);
@@ -464,10 +482,16 @@ namespace Dotmim.Sync.Web.Server
                         break;
                     case HttpStep.EndSession:
                         messageResponse = await this.EndSessionAsync(httpContext, (HttpMessageEndSessionRequest)messsageRequest, progress, cancellationToken).ConfigureAwait(false);
+
+                        // The sync ended cleanly: drop any persisted server-side cache so a future
+                        // sync starts from a fresh slate.
+                        await sessionStore.DeleteAsync(httpContext, sessionId, cancellationToken).ConfigureAwait(false);
                         break;
                 }
 
-                httpContext.Session.Set(sessionId, sessionCache);
+                // Persist the session cache through the configured store. Default store still uses
+                // ISession; durable stores keep the cache alive across process restarts.
+                await sessionStore.SaveAsync(httpContext, sessionId, sessionCache, cancellationToken).ConfigureAwait(false);
                 await httpContext.Session.CommitAsync(cancellationToken).ConfigureAwait(false);
 
                 if (messageResponse is HttpMessageSendChangesResponse httpMessageSendChangesResponse)
@@ -946,7 +970,7 @@ namespace Dotmim.Sync.Web.Server
         /// Apply changes to the server and then get the changes to send back to the client.
         /// </summary>
         protected internal virtual async Task<HttpMessageSummaryResponse> ApplyThenGetChangesAsync2(HttpContext httpContext, HttpMessageSendChangesRequest httpMessage, SessionCache sessionCache,
-                        int clientBatchSize, IProgress<ProgressArgs> progress = null, CancellationToken cancellationToken = default)
+                        int clientBatchSize, bool resumable, IProgress<ProgressArgs> progress = null, CancellationToken cancellationToken = default)
         {
             // Overriding batch size options value, coming from client
             // having changes from server in batch size or not is decided by the client.
@@ -971,7 +995,13 @@ namespace Dotmim.Sync.Web.Server
             // Get batch info from session cache if exists, otherwise create it
             sessionCache.ClientBatchInfo ??= new BatchInfo(this.Options.BatchDirectory, info: "REMOTEGETCHANGES");
 
-            if (httpMessage.Changes != null && httpMessage.Changes.HasRows)
+            // Idempotency guard: a resumable client may resend a batch the server already accepted
+            // (e.g. response was lost on the wire after the server wrote the file). Detect duplicates
+            // up front so we don't write the same .json file twice or count the same rows twice.
+            var alreadyAccepted = sessionCache.ClientBatchInfo.BatchPartsInfo
+                .Any(b => b.Index == httpMessage.BatchIndex);
+
+            if (httpMessage.Changes != null && httpMessage.Changes.HasRows && !alreadyAccepted)
             {
                 using var localSerializer = new LocalJsonSerializer(this.RemoteOrchestrator, context);
 
@@ -1050,16 +1080,20 @@ namespace Dotmim.Sync.Web.Server
             sessionCache.ClientChangesApplied = serverSyncChanges.ServerChangesApplied;
 
             // delete the folder (not the BatchPartInfo, because we have a reference on it)
-            var cleanFolder = this.Options.CleanFolder;
+            // Resumable clients may need to retry uploads against this same session: skip the cleanup
+            // and let the eventual EndSession (or a non-resumable replay) take care of it.
+            var cleanFolder = !resumable && this.Options.CleanFolder;
 
             if (cleanFolder)
                 cleanFolder = await this.RemoteOrchestrator.InternalCanCleanFolderAsync(httpMessage.SyncContext.ScopeName, context.Parameters, sessionCache.ClientBatchInfo, default, cancellationToken).ConfigureAwait(false);
 
             if (cleanFolder)
+            {
                 sessionCache.ClientBatchInfo.TryRemoveDirectory();
 
-            // we do not need client batch info now
-            sessionCache.ClientBatchInfo = null;
+                // we do not need client batch info now
+                sessionCache.ClientBatchInfo = null;
+            }
 
             // Retro compatiblity to version < 0.9.3
             if (serverSyncChanges.ServerBatchInfo.BatchPartsInfo == null)
@@ -1163,12 +1197,15 @@ namespace Dotmim.Sync.Web.Server
         /// </summary>
         protected internal virtual async Task<HttpMessageSendChangesResponse> SendEndDownloadChangesAsync(
             HttpContext httpContext, HttpMessageGetMoreChangesRequest httpMessage,
-            SessionCache sessionCache, IProgress<ProgressArgs> progress = null, CancellationToken cancellationToken = default)
+            SessionCache sessionCache, bool resumable, IProgress<ProgressArgs> progress = null, CancellationToken cancellationToken = default)
         {
             var batchPartInfo = sessionCache.ServerBatchInfo.BatchPartsInfo.FirstOrDefault(d => d.Index == httpMessage.BatchIndexRequested);
 
+            // Resumable clients drive their own cleanup lifecycle: they signal "we got everything" by
+            // sending EndSession, not by reaching the last batch. So we keep the partial folder around
+            // until the session ends, even after the last batch download.
             // we can try to clean if batchinfo is empty of if we found the last one AND we have the option.
-            var cleanFolder = (batchPartInfo == null || batchPartInfo.IsLastBatch) && this.Options.CleanFolder;
+            var cleanFolder = !resumable && (batchPartInfo == null || batchPartInfo.IsLastBatch) && this.Options.CleanFolder;
 
             if (cleanFolder)
                 cleanFolder = await this.RemoteOrchestrator.InternalCanCleanFolderAsync(httpMessage.SyncContext.ScopeName, httpMessage.SyncContext.Parameters, sessionCache.ServerBatchInfo, default, cancellationToken).ConfigureAwait(false);

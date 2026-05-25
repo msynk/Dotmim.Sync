@@ -68,7 +68,14 @@ namespace Dotmim.Sync.Web.Client
             } // throw client error
         }
 
-        private async Task WebRemoteCleanFolderAsync(SyncContext context, BatchInfo changes)
+        /// <summary>
+        /// Removes the local batch directory for downloads, honoring <see cref="SyncOptions.CleanFolder"/>.
+        /// <para>
+        /// Marked virtual so resumable orchestrators can suppress this cleanup while a resume token is
+        /// alive — the partial download has to survive across <c>SynchronizeAsync</c> calls.
+        /// </para>
+        /// </summary>
+        protected internal virtual async Task WebRemoteCleanFolderAsync(SyncContext context, BatchInfo changes)
         {
             // Try to delete the local folder where we download everything from server
             if (this.Options.CleanFolder && changes != null)
