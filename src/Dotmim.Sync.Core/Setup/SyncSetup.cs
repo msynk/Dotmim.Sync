@@ -1,7 +1,9 @@
-﻿using System;
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.Serialization;
+using Dotmim.Sync.Migration;
 
 namespace Dotmim.Sync
 {
@@ -68,6 +70,47 @@ namespace Dotmim.Sync
         /// </summary>
         [DataMember(Name = "secols", IsRequired = false, EmitDefaultValue = false, Order = 9)]
         public SetupColumns ExcludedColumns { get; set; }
+
+        // ── Static migration registry ──────────────────────────────────────────────────
+        // Migrations are process-wide deployment configuration. They are registered once
+        // at startup and are never serialised into scope_info.
+
+        private static readonly ConcurrentDictionary<string, SyncMigration> _globalMigrations
+            = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Gets the process-wide dictionary of registered migrations, keyed by
+        /// <see cref="SyncMigration.FromScopeName"/>.
+        /// </summary>
+        public static IReadOnlyDictionary<string, SyncMigration> GlobalMigrations => _globalMigrations;
+
+        /// <summary>
+        /// Registers a migration that bridges clients using an old scope to the server's
+        /// current scope. Replaces any previously registered migration for the same
+        /// <see cref="SyncMigration.FromScopeName"/>.
+        /// <example>
+        /// <code>
+        /// SyncSetup.AddMigration(
+        ///     new SyncMigration("v1")
+        ///         .ForTable("Products", t => t.RenameColumn("ProductName", "Name")));
+        /// </code>
+        /// </example>
+        /// </summary>
+        public static void AddMigration(SyncMigration migration)
+        {
+            if (migration == null) throw new ArgumentNullException(nameof(migration));
+            _globalMigrations[migration.FromScopeName] = migration;
+        }
+
+        /// <summary>
+        /// Returns the registered <see cref="SyncMigration"/> for <paramref name="fromScopeName"/>,
+        /// or <c>null</c> if none has been registered for that scope name.
+        /// </summary>
+        public static SyncMigration GetMigrationForScope(string fromScopeName)
+        {
+            if (string.IsNullOrWhiteSpace(fromScopeName)) return null;
+            return _globalMigrations.TryGetValue(fromScopeName, out var m) ? m : null;
+        }
 
         /// <summary>
         /// Gets the process-wide column exclusion list shared by every <see cref="SyncSetup"/> instance and every scope.

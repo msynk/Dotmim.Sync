@@ -9,19 +9,20 @@
 
 		<LangVersion>latest</LangVersion>
 
-		<!-- Generate the lock file -->
-		<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
 
-		<!-- Restore the exact packages as listed in the lock file -->
-		<RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
-
-		<Version>1.3.10</Version>
+		<Version>1.3.11</Version>
 		<VersionSuffix>$(VersionSuffix)</VersionSuffix>
 		<Version Condition=" '$(VersionSuffix)' != '' ">$(Version)-$(VersionSuffix)</Version>
 
 		<PackageTags>Data, Database, Sync, Synchronization, Framework, Sql, MySql, MariaDB, PostgreSql, Sqlite, Dotmim.Sync, SyncFramework</PackageTags>
 		<PackageProjectUrl>https://dotmimsync.readthedocs.io/</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/Mimetis/Dotmim.Sync</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+
+		<Authors>MSYNK</Authors>
+		<!-- <Company>MSYNK</Company> -->
+		<ApplicationIcon>favicon.ico</ApplicationIcon>
+		<PackageIcon>packageIcon.png</PackageIcon>
 
 		<!-- Publish the repository URL in the built .nupkg (in the NuSpec <Repository> element) -->
 		<PublishRepositoryUrl>true</PublishRepositoryUrl>

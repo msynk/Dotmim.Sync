@@ -1,4 +1,4 @@
-﻿using Dotmim.Sync.Batch;
+using Dotmim.Sync.Batch;
 using Dotmim.Sync.Enumerations;
 using Dotmim.Sync.Extensions;
 using Dotmim.Sync.Serialization;
@@ -34,6 +34,7 @@ namespace Dotmim.Sync.Web.Server
             this.Provider = provider;
             this.ScopeName = string.IsNullOrEmpty(scopeName) ? SyncOptions.DefaultScopeName : scopeName;
             this.RemoteOrchestrator = new RemoteOrchestrator(this.Provider, options ?? new SyncOptions());
+            this.RemoteOrchestrator.AgentScopeName = this.ScopeName;
             this.Identifier = identifier;
         }
 
@@ -45,8 +46,9 @@ namespace Dotmim.Sync.Web.Server
             this.Setup = new SyncSetup(tables);
             this.WebServerOptions = webServerOptions ?? new WebServerOptions();
             this.Provider = provider;
-            this.RemoteOrchestrator = new RemoteOrchestrator(this.Provider, options ?? new SyncOptions());
             this.ScopeName = string.IsNullOrEmpty(scopeName) ? SyncOptions.DefaultScopeName : scopeName;
+            this.RemoteOrchestrator = new RemoteOrchestrator(this.Provider, options ?? new SyncOptions());
+            this.RemoteOrchestrator.AgentScopeName = this.ScopeName;
             this.Identifier = identifier;
         }
 
@@ -296,7 +298,11 @@ namespace Dotmim.Sync.Web.Server
                 else
                     readableStream.Seek(0, SeekOrigin.Begin);
 
-                if (!string.Equals(scopeName, this.ScopeName, SyncGlobalization.DataSourceStringComparison))
+                // Allow migrated scope names through — a client on an old scope (e.g. "mig_v1")
+                // is served by the current-scope agent via a registered SyncMigration.
+                var isMigratedScope = SyncSetup.GetMigrationForScope(scopeName) != null;
+                if (!string.Equals(scopeName, this.ScopeName, SyncGlobalization.DataSourceStringComparison)
+                    && !isMigratedScope)
                     throw new HttpScopeNameFromClientIsInvalidException(scopeName, this.ScopeName);
 
                 // load session

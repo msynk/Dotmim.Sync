@@ -1,4 +1,4 @@
-﻿using Dotmim.Sync.Builders;
+using Dotmim.Sync.Builders;
 using Dotmim.Sync.Enumerations;
 using Dotmim.Sync.Extensions;
 using System;
@@ -107,6 +107,13 @@ namespace Dotmim.Sync
         internal virtual async Task<(SyncContext Context, ScopeInfo ServerScopeInfo, bool ShouldProvision)> InternalEnsureScopeInfoAsync(SyncContext context, SyncSetup setup, bool overwrite,
             DbConnection connection, DbTransaction transaction, IProgress<ProgressArgs> progress, CancellationToken cancellationToken)
         {
+            // If the requested scope name is the "from" side of a registered migration, return a
+            // schema projected to the old-client layout instead of the normal server scope.
+            var migration = this.GetMigrationForScope(context.ScopeName);
+            if (migration != null)
+                return await this.InternalEnsureMigratedScopeInfoAsync(
+                    context, migration, connection, transaction, progress, cancellationToken).ConfigureAwait(false);
+
             try
             {
                 bool shouldProvision = false;

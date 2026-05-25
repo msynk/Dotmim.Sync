@@ -1,4 +1,4 @@
-﻿using Dotmim.Sync.Batch;
+using Dotmim.Sync.Batch;
 using Dotmim.Sync.Enumerations;
 using Dotmim.Sync.Extensions;
 using Dotmim.Sync.Serialization;
@@ -22,6 +22,14 @@ namespace Dotmim.Sync
             InternalApplyThenGetChangesAsync(ScopeInfoClient cScopeInfoClient, ScopeInfo cScopeInfo, SyncContext context, ClientSyncChanges clientChanges,
             DbConnection connection = default, DbTransaction transaction = default, IProgress<ProgressArgs> progress = null, CancellationToken cancellationToken = default)
         {
+            // Transparently redirect to the migration-aware path when the connecting client
+            // is using an old scope name that has a registered SyncMigration.
+            var migration = this.GetMigrationForScope(cScopeInfo?.Name);
+            if (migration != null)
+                return await this.InternalMigratedApplyThenGetChangesAsync(
+                    cScopeInfoClient, cScopeInfo, migration, context, clientChanges,
+                    connection, transaction, progress, cancellationToken).ConfigureAwait(false);
+
             try
             {
                 if (this.Provider == null)

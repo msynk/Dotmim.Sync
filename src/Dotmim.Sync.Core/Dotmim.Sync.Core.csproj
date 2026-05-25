@@ -1,14 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<Authors>Sébastien Pertus</Authors>
-		<Company>Microsoft</Company>
 		<RootNamespace>Dotmim.Sync</RootNamespace>
 		<Title>Dotmim.Sync.Core</Title>
 		<Summary>Manage sync processes between relational database providers.</Summary>
 		<Description>Dotmim Sync core assembly. Manage a sync process beetween two relational databases provider. Can't be used alone. Choose a server and a client provider such as Dotmim.Sync.SqlServerProvider or Dotmim.Sync.SqliteProvider</Description>
-		<RepositoryType>git</RepositoryType>
-		<ApplicationIcon>favicon.ico</ApplicationIcon>
-		<PackageIcon>packageIcon.png</PackageIcon>
 		<OutputType>Library</OutputType>
 		<AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
 	</PropertyGroup>

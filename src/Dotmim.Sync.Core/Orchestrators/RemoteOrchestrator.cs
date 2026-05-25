@@ -1,4 +1,4 @@
-﻿using Dotmim.Sync.Enumerations;
+using Dotmim.Sync.Enumerations;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,6 +10,22 @@ namespace Dotmim.Sync
     /// </summary>
     public partial class RemoteOrchestrator : BaseOrchestrator
     {
+        /// <summary>
+        /// Gets or sets the current server scope name served by this orchestrator's
+        /// <c>WebServerAgent</c>. Set automatically by <c>WebServerAgent</c>.
+        /// Used as the implicit "to" scope name when the migration engine bridges old clients.
+        /// </summary>
+        internal string AgentScopeName { get; set; }
+
+        /// <summary>
+        /// Returns the <see cref="SyncMigration"/> registered globally via
+        /// <see cref="SyncSetup.AddMigration"/> whose <see cref="SyncMigration.FromScopeName"/>
+        /// matches <paramref name="scopeName"/>, or <c>null</c> if none is registered.
+        /// </summary>
+        internal Migration.SyncMigration GetMigrationForScope(string scopeName)
+            => SyncSetup.GetMigrationForScope(scopeName);
+
+
         /// <summary>
         /// Initializes a new instance of the <see cref="RemoteOrchestrator"/> class.
         /// Create a remote orchestrator, used to orchestrates the whole sync on the server side.

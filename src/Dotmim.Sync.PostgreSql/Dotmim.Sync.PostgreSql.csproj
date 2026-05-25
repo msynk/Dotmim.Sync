@@ -1,14 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<Authors>Sébastien Pertus, Waseem Ahmad Mughal</Authors>
-		<Company>Microsoft</Company>
 		<Title>Dotmim.Sync.PostgreSql</Title>
 		<Summary>PostgreSQL sync provider for client and server roles.</Summary>
 		<Description>PostgreSQL sync provider to manage synchronization between relational databases.</Description>
-		<RepositoryType>git</RepositoryType>
-		<ApplicationIcon>favicon.ico</ApplicationIcon>
-		<PackageIcon>packageIcon.png</PackageIcon>
 
 	</PropertyGroup>
 	<PropertyGroup>

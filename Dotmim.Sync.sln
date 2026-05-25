@@ -30,9 +30,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5D20
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dotmim.Sync.Samples.PostgresServer", "samples\Dotmim.Sync.Samples.PostgresServer\Dotmim.Sync.Samples.PostgresServer.csproj", "{CD0EFE67-8483-431A-88B5-64D46F15B288}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dotmim.Sync.Samples.SqliteClient", "samples\Dotmim.Sync.Samples.SqliteClient\Dotmim.Sync.Samples.SqliteClient.csproj", "{BB7116CD-174F-47F4-A683-370C90A06D30}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dotmim.Sync.Samples.Migration.Server", "samples\Migration\Server\Dotmim.Sync.Samples.Migration.Server.csproj", "{24F07510-D665-425E-8947-4B0517A8218A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dotmim.Sync.Samples.Migration.Client", "samples\Migration\Client\Dotmim.Sync.Samples.Migration.Client.csproj", "{095ED68C-B4D0-4A51-A80A-566E68CDB319}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -176,6 +178,30 @@ Global
 		{BB7116CD-174F-47F4-A683-370C90A06D30}.Release|x64.Build.0 = Release|Any CPU
 		{BB7116CD-174F-47F4-A683-370C90A06D30}.Release|x86.ActiveCfg = Release|Any CPU
 		{BB7116CD-174F-47F4-A683-370C90A06D30}.Release|x86.Build.0 = Release|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Debug|x64.Build.0 = Debug|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Debug|x86.Build.0 = Debug|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Release|x64.ActiveCfg = Release|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Release|x64.Build.0 = Release|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Release|x86.ActiveCfg = Release|Any CPU
+		{24F07510-D665-425E-8947-4B0517A8218A}.Release|x86.Build.0 = Release|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Debug|x64.Build.0 = Debug|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Debug|x86.Build.0 = Debug|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Release|Any CPU.Build.0 = Release|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Release|x64.ActiveCfg = Release|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Release|x64.Build.0 = Release|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Release|x86.ActiveCfg = Release|Any CPU
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -183,6 +209,8 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{CD0EFE67-8483-431A-88B5-64D46F15B288} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 		{BB7116CD-174F-47F4-A683-370C90A06D30} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
+		{24F07510-D665-425E-8947-4B0517A8218A} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
+		{095ED68C-B4D0-4A51-A80A-566E68CDB319} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {388BB2CB-7143-40F5-81F8-20AF54ED1478}

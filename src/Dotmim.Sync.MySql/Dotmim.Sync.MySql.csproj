@@ -2,14 +2,9 @@
 
 	<PropertyGroup>
 
-		<Authors>Sébastien Pertus</Authors>
-		<Company>Microsoft</Company>
 		<Title>Dotmim.Sync.MySql</Title>
 		<Summary>MySQL sync provider for client and server roles.</Summary>
 		<Description>MySQL sync provider to manage synchronization between relational databases.</Description>
-		<RepositoryType>git</RepositoryType>
-		<ApplicationIcon>favicon.ico</ApplicationIcon>
-		<PackageIcon>packageIcon.png</PackageIcon>
 
 	</PropertyGroup>
 	<PropertyGroup>

@@ -1,17 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 
-		<Authors>Sébastien Pertus</Authors>
-		<Company>Microsoft</Company>
 		<Title>Dotmim.Sync.Sqlite</Title>
 		<Summary>SQLite sync provider for client workloads.</Summary>
 		<Description>SQLite sync provider for client-side synchronization with server providers such as SQL Server or MySQL.</Description>
 		<PackageProjectUrl>https://dotmimsync.readthedocs.io/</PackageProjectUrl>
 		<PackageIconFullPath>../../docs/assets/packageIcon.png</PackageIconFullPath>
 		<RepositoryUrl>https://github.com/Mimetis/Dotmim.Sync</RepositoryUrl>
-		<RepositoryType>git</RepositoryType>
-		<ApplicationIcon>favicon.ico</ApplicationIcon>
-		<PackageIcon>packageIcon.png</PackageIcon>
 
 	</PropertyGroup>
 	<PropertyGroup>
