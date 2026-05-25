@@ -4,6 +4,8 @@ using Dotmim.Sync.Extensions;
 using Dotmim.Sync.Serialization;
 using Dotmim.Sync.Web.Client;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
+using Microsoft.Net.Http.Headers;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -56,6 +58,24 @@ namespace Dotmim.Sync.Web.Server
         /// Client Converter.
         /// </summary>
         private IConverter clientConverter;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether automatic HTTP compression of responses is enabled.
+        /// When <c>true</c>, responses may be compressed using either a custom handler set on
+        /// <see cref="HttpCompressionHandler"/> or the built-in default that honors the request
+        /// <c>Accept-Encoding</c> header. When <c>false</c>, responses are always sent uncompressed.
+        /// </summary>
+        public bool EnableHttpCompression { get; set; }
+
+        /// <summary>
+        /// Gets or sets an optional custom HTTP compression handler used to compress outgoing responses.
+        /// The function receives the current <see cref="HttpRequest"/>, <see cref="HttpResponse"/> and the
+        /// raw response bytes, and returns the (optionally compressed) bytes to send back. The handler is
+        /// expected to set the <c>Content-Encoding</c> response header when it actually compresses the
+        /// payload. When <c>null</c> (default), the built-in behavior that honors <c>Accept-Encoding</c>
+        /// is used.
+        /// </summary>
+        public Func<HttpRequest, HttpResponse, byte[], byte[]> HttpCompressionHandler { get; set; }
 
         /// <summary>
         /// Gets or Sets the setup used in this webServerAgent.
@@ -554,30 +574,133 @@ namespace Dotmim.Sync.Web.Server
 
         /// <summary>
         /// Ensure we have a Compression setting or not.
+        /// Honors <see cref="EnableHttpCompression"/> and any custom <see cref="HttpCompressionHandler"/>.
+        /// When no custom handler is set, the default behavior inspects the request
+        /// <c>Accept-Encoding</c> header (including q-values) and selects the best supported coding
+        /// among <c>br</c>, <c>gzip</c> and <c>deflate</c>; otherwise the payload is returned uncompressed.
         /// </summary>
         public virtual byte[] EnsureCompression(HttpRequest httpRequest, HttpResponse httpResponse, byte[] binaryData)
         {
-            // Compress data if client accept Gzip / Deflate
-            if (httpRequest.Headers.TryGetValue("Accept-Encoding", out var encoding) && (encoding.Contains("gzip") || encoding.Contains("deflate")))
+            // Compression is opt-out at the agent level
+            if (!this.EnableHttpCompression)
+                return binaryData;
+
+            // If consumer registered a custom compression strategy, delegate to it
+            if (this.HttpCompressionHandler != null)
+                return this.HttpCompressionHandler(httpRequest, httpResponse, binaryData) ?? binaryData;
+
+            // Default behavior: pick the best coding declared in Accept-Encoding
+            if (!httpRequest.Headers.TryGetValue("Accept-Encoding", out var acceptEncoding))
+                return binaryData;
+
+            var coding = SelectPreferredEncoding(acceptEncoding);
+            if (coding == null)
+                return binaryData;
+
+            using var output = new MemoryStream();
+            using (var compress = CreateCompressionStream(output, coding))
             {
-                if (!httpResponse.Headers.ContainsKey("Content-Encoding"))
-                    httpResponse.Headers.Append("Content-Encoding", "gzip");
-
-                using var writeSteam = new MemoryStream();
-
-                using (var compress = new GZipStream(writeSteam, CompressionMode.Compress))
-                {
-                    compress.Write(binaryData, 0, binaryData.Length);
-                    compress.Flush();
-                }
-
-                var b = writeSteam.ToArray();
-                writeSteam.Flush();
-                return b;
+                compress.Write(binaryData, 0, binaryData.Length);
+                compress.Flush();
             }
 
-            return binaryData;
+            if (!httpResponse.Headers.ContainsKey("Content-Encoding"))
+                httpResponse.Headers.Append("Content-Encoding", coding);
+
+            return output.ToArray();
         }
+
+        /// <summary>
+        /// Parses the <c>Accept-Encoding</c> header values and returns the preferred coding among the
+        /// ones we can produce (<c>br</c>, <c>gzip</c>, <c>deflate</c>), honoring q-values and the
+        /// special <c>identity</c> / <c>*</c> tokens. Returns <c>null</c> when no compression should be
+        /// applied (uncompressed identity wins, or the header is empty).
+        /// </summary>
+        private static string SelectPreferredEncoding(StringValues acceptEncoding)
+        {
+            // Codings we can actually produce, ordered by our own preference for tie-breaking
+            string[] supported = ["br", "gzip", "deflate"];
+
+            if (!StringWithQualityHeaderValue.TryParseList(acceptEncoding, out var entries) || entries == null || entries.Count == 0)
+                return null;
+
+            // Default identity quality is 1 unless explicitly overridden
+            double identityQ = 1d;
+            bool wildcardSeen = false;
+            double wildcardQ = 0d;
+
+            // Highest q-value encountered for each supported coding
+            var codingQ = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var entry in entries)
+            {
+                var token = entry.Value.Value;
+                if (string.IsNullOrEmpty(token))
+                    continue;
+
+                // StringWithQualityHeaderValue treats a missing q parameter as null, which means q=1
+                var q = entry.Quality ?? 1d;
+
+                if (string.Equals(token, "identity", StringComparison.OrdinalIgnoreCase))
+                {
+                    identityQ = q;
+                }
+                else if (token == "*")
+                {
+                    wildcardSeen = true;
+                    wildcardQ = q;
+                }
+                else
+                {
+                    var canonical = Array.Find(supported, s => string.Equals(s, token, StringComparison.OrdinalIgnoreCase));
+                    if (canonical == null)
+                        continue;
+
+                    // Keep the highest q-value if a coding appears more than once
+                    if (!codingQ.TryGetValue(canonical, out var existing) || q > existing)
+                        codingQ[canonical] = q;
+                }
+            }
+
+            // Apply the wildcard to any supported coding not explicitly listed
+            if (wildcardSeen)
+            {
+                foreach (var s in supported)
+                {
+                    if (!codingQ.ContainsKey(s))
+                        codingQ[s] = wildcardQ;
+                }
+            }
+
+            // Pick the supported coding with the highest q-value (>0), respecting our preference order
+            string best = null;
+            double bestQ = 0d;
+            foreach (var s in supported)
+            {
+                if (codingQ.TryGetValue(s, out var q) && q > 0d && q > bestQ)
+                {
+                    best = s;
+                    bestQ = q;
+                }
+            }
+
+            // If identity is at least as preferred as the best coding, skip compression
+            if (best == null || identityQ >= bestQ)
+                return null;
+
+            return best;
+        }
+
+        /// <summary>
+        /// Creates a write-only compression stream for the given coding.
+        /// </summary>
+        private static Stream CreateCompressionStream(Stream destination, string coding) => coding switch
+        {
+            "br" => new BrotliStream(destination, CompressionMode.Compress, leaveOpen: true),
+            "gzip" => new GZipStream(destination, CompressionMode.Compress, leaveOpen: true),
+            "deflate" => new DeflateStream(destination, CompressionMode.Compress, leaveOpen: true),
+            _ => throw new NotSupportedException($"Unsupported encoding '{coding}'."),
+        };
 
         /// <summary>
         /// Returns the serializer used by the client, that should be used on the server.
