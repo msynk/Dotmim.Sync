@@ -10,7 +10,7 @@
 		<LangVersion>latest</LangVersion>
 
 
-		<Version>1.3.13</Version>
+		<Version>1.3.14</Version>
 		<VersionSuffix>$(VersionSuffix)</VersionSuffix>
 		<Version Condition=" '$(VersionSuffix)' != '' ">$(Version)-$(VersionSuffix)</Version>
 
@@ -33,6 +33,8 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<EmbedAllSources>true</EmbedAllSources>
 		<IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net7.0'))">true</IsAotCompatible>
+		<EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+		<SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
 
 	</PropertyGroup>
 

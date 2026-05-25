@@ -4,6 +4,7 @@ using Dotmim.Sync.Web.Server;
 using Microsoft.AspNetCore.Http;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,6 +31,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// <param name="scopeName">Scope name.</param>
         /// <param name="identifier">Can be use to differentiate configuration where you are using the same provider in a multiple databases scenario.</param>
         [Obsolete("Use AddSyncServer(CoreProvider provider) instead, as it offers more possibilities to configure your provider, if needed.")]
+        [RequiresUnreferencedCode("This method uses Activator.CreateInstance which is not AOT-compatible. Use the overload that accepts a CoreProvider instance.")]
         public static IServiceCollection AddSyncServer(this IServiceCollection serviceCollection, Type providerType,
                                                         string connectionString, SyncSetup setup = null, SyncOptions options = null,
                                                         WebServerOptions webServerOptions = null, string scopeName = null, string identifier = null)

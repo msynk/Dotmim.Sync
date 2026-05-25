@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 
@@ -55,18 +54,11 @@ namespace Dotmim.Sync
         }
 
         /// <summary>
-        /// Get type converter.
+        /// Get type converter. Returns null since TypeDescriptor is not AOT-compatible.
+        /// This method is kept for backward compatibility but no longer uses TypeDescriptor.
         /// </summary>
-        public static TypeConverter GetConverter(Type type)
-        {
-            var converter = TypeDescriptor.GetConverter(type);
-
-            // Every object could use a TypeConverter, so we exclude it
-            if (converter != null && converter.GetType() != typeof(TypeConverter) && converter.CanConvertTo(typeof(string)))
-                return converter;
-
-            return null;
-        }
+        [Obsolete("TypeDescriptor-based converters are not AOT-compatible. This method always returns null.")]
+        public static System.ComponentModel.TypeConverter GetConverter(Type type) => null;
 
         /// <summary>
         /// Since we don't serializer the reference to the schema, this method will reaffect the correct schema.

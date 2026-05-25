@@ -25,6 +25,7 @@ SOFTWARE.
 using Dotmim.Sync;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
@@ -58,7 +59,7 @@ namespace System.Text.Json.Serialization.Metadata
         /// <summary>
         /// Gets the JsonTypeInfo for the specified type.
         /// </summary>
-        public override JsonTypeInfo GetTypeInfo(Type type, JsonSerializerOptions options)
+        public override JsonTypeInfo GetTypeInfo([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type type, JsonSerializerOptions options)
         {
             var jsonTypeInfo = base.GetTypeInfo(type, options);
 
@@ -82,10 +83,32 @@ namespace System.Text.Json.Serialization.Metadata
             if (!type.IsValueType)
                 return false;
 
-            return Activator.CreateInstance(type).Equals(obj);
+            // Compare against known default values without using Activator.CreateInstance (AOT-safe).
+            if (type == typeof(int)) return (int)obj == 0;
+            if (type == typeof(long)) return (long)obj == 0L;
+            if (type == typeof(short)) return (short)obj == 0;
+            if (type == typeof(byte)) return (byte)obj == 0;
+            if (type == typeof(bool)) return (bool)obj == false;
+            if (type == typeof(double)) return (double)obj == 0.0;
+            if (type == typeof(float)) return (float)obj == 0.0f;
+            if (type == typeof(decimal)) return (decimal)obj == 0m;
+            if (type == typeof(uint)) return (uint)obj == 0u;
+            if (type == typeof(ulong)) return (ulong)obj == 0UL;
+            if (type == typeof(ushort)) return (ushort)obj == 0;
+            if (type == typeof(sbyte)) return (sbyte)obj == 0;
+            if (type == typeof(char)) return (char)obj == '\0';
+            if (type == typeof(DateTime)) return (DateTime)obj == default;
+            if (type == typeof(DateTimeOffset)) return (DateTimeOffset)obj == default;
+            if (type == typeof(DateOnly)) return (DateOnly)obj == default;
+            if (type == typeof(TimeSpan)) return (TimeSpan)obj == default;
+            if (type == typeof(Guid)) return (Guid)obj == default;
+
+            // For any other value type, compare with a boxed default.
+            // This uses Activator as a last resort for unknown value types.
+            return obj.Equals(Activator.CreateInstance(type));
         }
 
-        private static IEnumerable<MemberInfo> EnumerateFieldsAndProperties(Type type, BindingFlags bindingFlags)
+        private static IEnumerable<MemberInfo> EnumerateFieldsAndProperties([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields | DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] Type type, BindingFlags bindingFlags)
         {
             foreach (var fieldInfo in type.GetFields(bindingFlags))
                 yield return fieldInfo;

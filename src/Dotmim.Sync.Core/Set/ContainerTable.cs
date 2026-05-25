@@ -34,7 +34,7 @@ namespace Dotmim.Sync
         [DataMember(Name = "r", IsRequired = false, Order = 4)]
 
         // [JsonConverter(typeof(ArrayJsonConverter))]
-        public List<object[]> Rows { get; set; } = new List<dynamic[]>();
+        public List<object[]> Rows { get; set; } = new List<object[]>();
 
         /// <inheritdoc cref="ContainerTable"/>
         public ContainerTable()

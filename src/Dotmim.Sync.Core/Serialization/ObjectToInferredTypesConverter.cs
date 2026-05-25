@@ -41,9 +41,80 @@ namespace Dotmim.Sync.Serialization
             Guard.ThrowIfNull(writer);
 
             if (objectToWrite == null)
+            {
                 writer.WriteNullValue();
-            else
-                JsonSerializer.Serialize(writer, objectToWrite, objectToWrite.GetType(), options);
+                return;
+            }
+
+            // Write known primitive types directly to avoid runtime type resolution (AOT-safe).
+            switch (objectToWrite)
+            {
+                case string s:
+                    writer.WriteStringValue(s);
+                    break;
+                case bool b:
+                    writer.WriteBooleanValue(b);
+                    break;
+                case int i:
+                    writer.WriteNumberValue(i);
+                    break;
+                case long l:
+                    writer.WriteNumberValue(l);
+                    break;
+                case double d:
+                    writer.WriteNumberValue(d);
+                    break;
+                case float f:
+                    writer.WriteNumberValue(f);
+                    break;
+                case decimal dec:
+                    writer.WriteNumberValue(dec);
+                    break;
+                case short sh:
+                    writer.WriteNumberValue(sh);
+                    break;
+                case ushort us:
+                    writer.WriteNumberValue(us);
+                    break;
+                case uint ui:
+                    writer.WriteNumberValue(ui);
+                    break;
+                case ulong ul:
+                    writer.WriteNumberValue(ul);
+                    break;
+                case byte by:
+                    writer.WriteNumberValue(by);
+                    break;
+                case sbyte sb:
+                    writer.WriteNumberValue(sb);
+                    break;
+                case DateTime dt:
+                    writer.WriteStringValue(dt);
+                    break;
+                case DateTimeOffset dto:
+                    writer.WriteStringValue(dto);
+                    break;
+                case DateOnly dateOnly:
+                    writer.WriteStringValue(dateOnly.ToString("O"));
+                    break;
+                case TimeSpan ts:
+                    writer.WriteStringValue(ts.ToString());
+                    break;
+                case Guid g:
+                    writer.WriteStringValue(g);
+                    break;
+                case byte[] ba:
+                    writer.WriteBase64StringValue(ba);
+                    break;
+                case char c:
+                    writer.WriteStringValue(c.ToString());
+                    break;
+                default:
+                    // Fallback for any other type - use JsonSerializer with the runtime type.
+                    // This path should rarely be hit for Dotmim.Sync's known type set.
+                    JsonSerializer.Serialize(writer, objectToWrite, objectToWrite.GetType(), options);
+                    break;
+            }
         }
 
         /// <summary>

@@ -1,5 +1,4 @@
 ﻿using System;
-using System.ComponentModel;
 using System.Data;
 using System.Globalization;
 
@@ -13,7 +12,7 @@ namespace Dotmim.Sync
         /// <summary>
         /// Try to convert a value to another type.
         /// </summary>
-        public static T TryConvertTo<T>(dynamic value, CultureInfo provider = default)
+        public static T TryConvertTo<T>(object value, CultureInfo provider = default)
         {
             if (value == null)
                 return default;
@@ -26,136 +25,130 @@ namespace Dotmim.Sync
             if (typeOfT == typeOfU)
                 return (T)Convert.ChangeType(value, typeOfT, provider);
 
-            var typeConverter = TypeDescriptor.GetConverter(typeOfT);
-
             if (typeOfT == typeof(short))
             {
-                return Convert.ToInt16(value, provider);
+                return (T)(object)Convert.ToInt16(value, provider);
             }
             else if (typeOfT == typeof(int))
             {
-                return Convert.ToInt32(value);
+                return (T)(object)Convert.ToInt32(value, provider);
             }
             else if (typeOfT == typeof(long))
             {
-                return Convert.ToInt64(value);
+                return (T)(object)Convert.ToInt64(value, provider);
             }
             else if (typeOfT == typeof(ushort))
             {
-                return Convert.ToUInt16(value);
+                return (T)(object)Convert.ToUInt16(value, provider);
             }
             else if (typeOfT == typeof(uint))
             {
-                return Convert.ToUInt32(value);
+                return (T)(object)Convert.ToUInt32(value, provider);
             }
             else if (typeOfT == typeof(ulong))
             {
-                return Convert.ToUInt64(value);
+                return (T)(object)Convert.ToUInt64(value, provider);
             }
             else if (typeOfT == typeof(DateOnly))
             {
                 if (value is DateTimeOffset dateTimeOffset)
-                    return (T)Convert.ChangeType(DateOnly.FromDateTime(dateTimeOffset.DateTime), typeOfT, provider);
+                    return (T)(object)DateOnly.FromDateTime(dateTimeOffset.DateTime);
 
-                string valueStr = value.ToString(); // IOS bug ????
+                string valueStr = value.ToString();
                 if (DateOnly.TryParse(valueStr, provider, DateTimeStyles.None, out DateOnly dateOnly))
-                    return (T)Convert.ChangeType(dateOnly, typeOfT, provider);
+                    return (T)(object)dateOnly;
                 else if (typeOfU == typeof(long))
-                    return (T)Convert.ChangeType(DateOnly.FromDateTime(new DateTime(value)), typeOfT, provider);
+                    return (T)(object)DateOnly.FromDateTime(new DateTime((long)value));
                 else
-                    return (T)Convert.ChangeType(DateOnly.FromDateTime(Convert.ToDateTime(value)), typeOfT, provider);
+                    return (T)(object)DateOnly.FromDateTime(Convert.ToDateTime(value, provider));
             }
             else if (typeOfT == typeof(DateTime))
             {
                 if (value is DateTimeOffset dateTimeOffset)
-                    return (T)Convert.ChangeType(dateTimeOffset.DateTime, typeOfT, provider);
+                    return (T)(object)dateTimeOffset.DateTime;
 
-                string valueStr = value.ToString(); // IOS bug ????
+                string valueStr = value.ToString();
                 if (DateTime.TryParse(valueStr, provider, DateTimeStyles.None, out DateTime dateTime))
-                    return (T)Convert.ChangeType(dateTime, typeOfT, provider);
+                    return (T)(object)dateTime;
                 else if (typeOfU == typeof(long))
-                    return (T)Convert.ChangeType(new DateTime(value), typeOfT, provider);
+                    return (T)(object)new DateTime((long)value);
                 else
-                    return Convert.ToDateTime(value);
+                    return (T)(object)Convert.ToDateTime(value, provider);
             }
             else if (typeOfT == typeof(DateTimeOffset))
             {
                 if (value is DateTime dateTime)
-                    return (T)Convert.ChangeType(new DateTimeOffset(dateTime), typeOfT, provider);
+                    return (T)(object)new DateTimeOffset(dateTime);
                 else if (DateTimeOffset.TryParse(value.ToString(), provider, DateTimeStyles.None, out DateTimeOffset dateTimeOffset))
-                    return (T)Convert.ChangeType(dateTimeOffset, typeOfT, provider);
+                    return (T)(object)dateTimeOffset;
                 else if (typeOfU == typeof(long))
-                    return (T)Convert.ChangeType(new DateTimeOffset(new DateTime(value)), typeOfT, provider);
+                    return (T)(object)new DateTimeOffset(new DateTime((long)value));
                 else
-                    return Convert.ToDateTime(value);
+                    return (T)(object)new DateTimeOffset(Convert.ToDateTime(value, provider));
             }
             else if (typeOfT == typeof(string))
             {
-                return value.ToString();
+                return (T)(object)value.ToString();
             }
             else if (typeOfT == typeof(byte))
             {
-                return Convert.ToByte(value);
+                return (T)(object)Convert.ToByte(value, provider);
             }
             else if (typeOfT == typeof(bool))
             {
                 if (bool.TryParse(value.ToString(), out bool v))
-                    return (T)Convert.ChangeType(v, typeOfT, CultureInfo.InvariantCulture);
+                    return (T)(object)v;
                 else if (value.ToString().Trim() == "0")
-                    return (T)Convert.ChangeType(false, typeOfT, provider);
+                    return (T)(object)false;
                 else if (value.ToString().Trim() == "1")
-                    return (T)Convert.ChangeType(true, typeOfT, provider);
+                    return (T)(object)true;
                 else
-                    return Convert.ToBoolean(value);
+                    return (T)(object)Convert.ToBoolean(value, provider);
             }
             else if (typeOfT == typeof(Guid))
             {
                 string valueStr = value.ToString();
                 if (Guid.TryParse(valueStr, out Guid j))
-                    return (T)Convert.ChangeType(j, typeOfT, provider);
+                    return (T)(object)j;
                 else if (value.GetType() == typeof(byte[]))
-                    return (T)Convert.ChangeType(new Guid(value as byte[]), typeOfT, provider);
+                    return (T)(object)new Guid((byte[])value);
                 else
-                    return (T)Convert.ChangeType(new Guid(value.ToString()), typeOfT, provider);
+                    return (T)(object)new Guid(value.ToString());
             }
             else if (typeOfT == typeof(char))
             {
-                return Convert.ToChar(value);
+                return (T)(object)Convert.ToChar(value, provider);
             }
             else if (typeOfT == typeof(decimal))
             {
-                return Convert.ToDecimal(value, provider);
+                return (T)(object)Convert.ToDecimal(value, provider);
             }
             else if (typeOfT == typeof(double))
             {
-                return Convert.ToDouble(value, provider.NumberFormat);
+                return (T)(object)Convert.ToDouble(value, provider);
             }
             else if (typeOfT == typeof(float))
             {
-                return Convert.ToSingle(value, provider.NumberFormat);
+                return (T)(object)Convert.ToSingle(value, provider);
             }
             else if (typeOfT == typeof(sbyte))
             {
-                return Convert.ToSByte(value);
+                return (T)(object)Convert.ToSByte(value, provider);
             }
             else if (typeOfT == typeof(TimeSpan))
             {
                 if (typeOfU == typeof(short) || typeOfU == typeof(int) || typeOfU == typeof(long)
                    || typeOfU == typeof(ushort) || typeOfU == typeof(uint) || typeOfU == typeof(ulong))
-                    return (T)Convert.ChangeType(TimeSpan.FromTicks(value), typeOfT, provider);
+                    return (T)(object)TimeSpan.FromTicks(Convert.ToInt64(value, provider));
                 if (TimeSpan.TryParse(value.ToString(), provider, out TimeSpan q))
-                    return (T)Convert.ChangeType(q, typeOfT, provider);
+                    return (T)(object)q;
             }
             else if (typeOfT == typeof(byte[]))
             {
                 if (typeOfU == typeof(string))
-                    return (T)Convert.ChangeType(Convert.FromBase64String((string)value), typeOfT, provider);
+                    return (T)(object)Convert.FromBase64String((string)value);
                 else
-                    return (T)Convert.ChangeType(BitConverter.GetBytes((dynamic)value), typeOfT, provider);
-            }
-            else if (typeConverter.CanConvertFrom(typeOfT))
-            {
-                return (T)Convert.ChangeType(typeConverter.ConvertFrom(value), typeOfT, provider);
+                    return (T)(object)ConvertToByteArray(value);
             }
             else
             {
@@ -170,9 +163,6 @@ namespace Dotmim.Sync
         /// </summary>
         public static object TryConvertTo(object value, Type typeOfT, CultureInfo provider = default)
         {
-
-            var typeConverter = TypeDescriptor.GetConverter(typeOfT);
-
             if (typeOfT == typeof(short))
                 return TryConvertTo<short>(value, provider);
             else if (typeOfT == typeof(int))
@@ -213,13 +203,30 @@ namespace Dotmim.Sync
                 return TryConvertTo<TimeSpan>(value, provider);
             else if (typeOfT == typeof(byte[]))
                 return TryConvertTo<byte[]>(value, provider);
-            else if (typeConverter.CanConvertFrom(typeOfT))
-                return Convert.ChangeType(typeConverter.ConvertFrom(value), typeOfT, provider);
             else if (typeOfT == typeof(object))
                 return value;
             else
                 throw new FormatTypeException(typeOfT);
         }
+
+        /// <summary>
+        /// Convert a numeric value to its byte array representation without using dynamic dispatch.
+        /// </summary>
+        private static byte[] ConvertToByteArray(object value) => value switch
+        {
+            short s => BitConverter.GetBytes(s),
+            int i => BitConverter.GetBytes(i),
+            long l => BitConverter.GetBytes(l),
+            ushort us => BitConverter.GetBytes(us),
+            uint ui => BitConverter.GetBytes(ui),
+            ulong ul => BitConverter.GetBytes(ul),
+            float f => BitConverter.GetBytes(f),
+            double d => BitConverter.GetBytes(d),
+            bool b => BitConverter.GetBytes(b),
+            char c => BitConverter.GetBytes(c),
+            byte[] ba => ba,
+            _ => throw new FormatTypeException(typeof(byte[])),
+        };
 
         /// <summary>
         /// Try to convert a value from DbType to another type.
