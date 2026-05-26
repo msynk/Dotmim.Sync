@@ -1,10 +1,5 @@
 # Dotmim.Sync (msynk fork)
 
-![DMS](docs/assets/Smallicon.svg)
-
-[![NuGet version (Dotmim.Sync.Core)](https://img.shields.io/nuget/v/Dotmim.Sync.Core.svg)](https://www.nuget.org/packages?q=dotmim.sync)
-[![Documentation Status](https://readthedocs.org/projects/dotmimsync/badge/?version=master)](https://dotmimsync.readthedocs.io/?badge=master)
-
 A relational database sync framework for .NET. Define a setup, point at a server and a client provider, and call `SynchronizeAsync`. Works against **SQL Server**, **PostgreSQL**, **MySQL/MariaDB**, and **SQLite**, locally or over HTTPS through ASP.NET Core.
 
 This is **[msynk/Dotmim.Sync](https://github.com/msynk/Dotmim.Sync)**, a fork of **[Mimetis/Dotmim.Sync](https://github.com/Mimetis/Dotmim.Sync)** that targets **.NET 10**, is AOT-friendly, and adds first-class APIs for column exclusions, shadow columns, shadow tables, schema-rename migrations, provider-level bulk operations, HTTP response compression, and resumable HTTPS sync. The fork tracks upstream and is buildable from this repo (`Dotmim.Sync.sln`).
