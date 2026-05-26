@@ -1,347 +1,308 @@
 Synchronization types
 =================================
 
-You have one main method to launch a synchronization, with several optional parameters:
+``SyncAgent`` exposes a single primary entry point — ``SynchronizeAsync`` — with many overloads to combine the optional pieces of a sync request:
 
 .. code-block:: csharp
 
-	SynchronizeAsync();
-	SynchronizeAsync(IProgress<ProgressArgs> progress);
-	SynchronizeAsync(CancellationToken cancellationToken);
-	SynchronizeAsync(SyncType syncType);
-	SynchronizeAsync(SyncType syncType, CancellationToken cancellationToken);
+    // No setup, no parameters, default scope, normal sync.
+    SynchronizeAsync(IProgress<ProgressArgs> progress = null);
 
+    // Pass tables, a SyncSetup, parameters, a sync type, a scope name, etc.
+    SynchronizeAsync(SyncSetup setup, IProgress<ProgressArgs> progress = null);
+    SynchronizeAsync(string[] tables, IProgress<ProgressArgs> progress = null);
+    SynchronizeAsync(SyncType syncType, IProgress<ProgressArgs> progress = null);
+    SynchronizeAsync(SyncParameters parameters, IProgress<ProgressArgs> progress = null);
+    SynchronizeAsync(string scopeName, ...);
 
-| You can use the ``CancellationToken`` object whenever you want to rollback an "*in progress*" synchronization.
-| And since we have an async synchronization, you can pass an ``IProgress<ProgressArgs>`` object to have feedback during the sync process.
+    // Resumable transport (see "Resumable sync" below).
+    SynchronizeAsync(bool resumable, IProgress<ProgressArgs> progress = null);
 
-.. note:: The progression system is explained in the next chapter `Progress <Progression.html>`_ 
+    // The full overload everything else delegates to:
+    SynchronizeAsync(string scopeName, SyncSetup setup, SyncType syncType,
+        SyncParameters parameters, IProgress<ProgressArgs> progress = null,
+        CancellationToken cancellationToken = default);
 
+* The ``CancellationToken`` overloads let you cancel an in-flight sync.
+* The ``IProgress<ProgressArgs>`` overloads stream progress updates while the sync is running. See `Progression <Progression.html>`_.
 
-let's see now a straightforward sample illustrating the use of the ``SyncType`` argument.
-
-.. hint:: You will find the sample used for this chapter, here : `SyncType sample <https://github.com/Mimetis/Dotmim.Sync/tree/master/Samples/SyncType>`_ 
+.. hint:: You will find a sample illustrating ``SyncType`` here: `SyncType sample <https://github.com/Mimetis/Dotmim.Sync/tree/master/Samples/SyncType>`_
 
 .. code-block:: csharp
 
-	SqlSyncProvider serverProvider = new SqlSyncProvider(GetDatabaseConnectionString("AdventureWorks"));
-	SqlSyncProvider clientProvider = new SqlSyncProvider(GetDatabaseConnectionString("Client"));
+    var serverProvider = new SqlSyncProvider(GetDatabaseConnectionString("AdventureWorks"));
+    var clientProvider = new SqlSyncProvider(GetDatabaseConnectionString("Client"));
 
-	var setup = new SyncSetup("ProductCategory", "ProductModel", "Product", "Address", "Customer", 
-		"CustomerAddress", "SalesOrderHeader", "SalesOrderDetail");
+    var setup = new SyncSetup("ProductCategory", "ProductModel", "Product", "Address", "Customer",
+        "CustomerAddress", "SalesOrderHeader", "SalesOrderDetail");
 
-	SyncAgent agent = new SyncAgent(clientProvider, serverProvider);
+    var agent = new SyncAgent(clientProvider, serverProvider);
 
-	var syncContext = await agent.SynchronizeAsync(setup);
+    var result = await agent.SynchronizeAsync(setup);
 
-	Console.WriteLine(syncContext);
+    Console.WriteLine(result);
 
-Here is the result, after the **first initial** synchronization:
+
+After the first **initial** sync:
 
 .. code-block:: bash
 
-	Synchronization done.
-		Total changes  uploaded: 0
-		Total changes  downloaded: 2752
-		Total changes  applied: 2752
-		Total resolved conflicts: 0
-		Total duration :0:0:4.720
+    Synchronization done.
+        Total changes  uploaded: 0
+        Total changes  downloaded: 2752
+        Total changes  applied on client: 2752
+        Total changes  applied on server: 0
+        Total resolved conflicts: 0
+        Total duration :00.00:04.720
 
-As you can see, the client has downloaded 2752 lines from the server.   
-
-Obviously if we made a new sync, without making any changes neither on the server nor the client, the result will be :
+A subsequent sync without changes:
 
 .. code-block:: csharp
 
-	SqlSyncProvider serverProvider = new SqlSyncProvider(GetDatabaseConnectionString("AdventureWorks"));
-	SqlSyncProvider clientProvider = new SqlSyncProvider(GetDatabaseConnectionString("Client"));
+    var agent = new SyncAgent(clientProvider, serverProvider);
+    var result = await agent.SynchronizeAsync();
+    Console.WriteLine(result);
 
-	SyncAgent agent = new SyncAgent(clientProvider, serverProvider);
-
-	var syncContext = await agent.SynchronizeAsync();
-
-	Console.WriteLine(syncContext);
-
-.. note:: Since you've made a first sync before, the setup is already saved in the databases. So far, no need to pass the argument anymore now.
+.. note:: After the first sync the setup is persisted in the **scope_info** table on both sides. You don't need to pass it again unless you want to change it.
 
 .. code-block:: bash
 
-	Synchronization done.
-		Total changes  uploaded: 0
-		Total changes  downloaded: 0
-		Total changes  applied: 0
-		Total resolved conflicts: 0
-		Total duration :0:0:0.382
-
-Ok make sense !
+    Synchronization done.
+        Total changes  uploaded: 0
+        Total changes  downloaded: 0
+        Total changes  applied on client: 0
+        Total changes  applied on server: 0
+        Total resolved conflicts: 0
+        Total duration :00.00:00.382
 
 SyncType
 ^^^^^^^^^^^^
 
-| The ``SyncType`` enumeration allows you to **reinitialize** a client database (already synchronized or not).  
-| For various reason, you may want to re-download the whole database schema and rows from the server (bug, out of sync, and so on ...)
-
-``SyncType`` is mainly an enumeration used when calling the ``SynchronizeAsync()`` method:
+The ``SyncType`` enumeration controls whether the client should be reinitialized.
 
 .. code-block:: csharp
 
-	public enum SyncType
-	{
-		/// <summary>
-		/// Normal synchronization
-		/// </summary>
-		Normal,
+    public enum SyncType
+    {
+        /// <summary>Normal synchronization.</summary>
+        Normal,
 
-		/// <summary>
-		/// Reinitialize the whole sync database, applying all rows from the server to the client
-		/// </summary>
-		Reinitialize,
-		
-		/// <summary>
-		/// Reinitialize the whole sync database, applying all rows from the server to the client, 
-		/// after tried a client upload
-		/// </summary>
-		ReinitializeWithUpload
-	}
+        /// <summary>Reinitialize the whole client database from the server.</summary>
+        Reinitialize,
 
+        /// <summary>Reinitialize after attempting to upload local changes first.</summary>
+        ReinitializeWithUpload,
+    }
 
-* ``SyncType.Normal``: Default value, represents a normal sync process.
-* ``SyncType.Reinitialize``: Marks the client to be resynchronized. Be careful, any changes on the client will be overwritten by this value.
-* ``SyncType.ReinitializeWithUpload``: Like *Reinitialize* this value will launch a process to resynchronize the whole client database, except that the client will *try* to send its local changes before making the resync process.
+* ``SyncType.Normal``: default, regular delta sync.
+* ``SyncType.Reinitialize``: discards client state, redownloads everything from the server. Local changes that were not yet uploaded are lost.
+* ``SyncType.ReinitializeWithUpload``: same as ``Reinitialize``, but uploads pending client changes first, then reinitializes.
 
-From the sample we saw before, here is the different behaviors with each ``SyncType`` enumeration value:  
-
-First of all, for demo purpose, we are updating a row on the **client**:
+Demo. We update one row on the **client**:
 
 .. code-block:: sql
 
-	-- initial value is 'The Bike Store'
-	UPDATE Client.dbo.Customer SET CompanyName='The New Bike Store' WHERE CustomerId = 1 
+    -- initial value is 'The Bike Store'
+    UPDATE Client.dbo.Customer SET CompanyName = 'The New Bike Store' WHERE CustomerId = 1;
 
 
 SyncType.Normal
 --------------------
 
-Let's see what happens, now that we have updated a row on the client side, with a *normal* sync:
-
 .. code-block:: csharp
 
-	SqlSyncProvider serverProvider = new SqlSyncProvider(GetDatabaseConnectionString("AdventureWorks"));
-	SqlSyncProvider clientProvider = new SqlSyncProvider(GetDatabaseConnectionString("Client"));
-
-	var syncContext = await agent.SynchronizeAsync();
-
-	Console.WriteLine(syncContext);
+    var result = await agent.SynchronizeAsync();
+    Console.WriteLine(result);
 
 .. code-block:: bash
 
-	Synchronization done.
-			Total changes  uploaded: 1
-			Total changes  downloaded: 0
-			Total changes  applied: 0
-			Total resolved conflicts: 0
-			Total duration :0:0:1.382
+    Synchronization done.
+        Total changes  uploaded: 1
+        Total changes  downloaded: 0
+        Total changes  applied on client: 0
+        Total changes  applied on server: 1
+        Total resolved conflicts: 0
+        Total duration :00.00:01.382
 
-The default behavior is what we were waiting for: Uploading the modified row to the server.
+The default behavior uploads the modified row to the server.
 
 SyncType.Reinitialize
 -------------------------
 
-The ``SyncType.Reinitialize`` mode will **reinitialize** the whole client database.
+``SyncType.Reinitialize`` reinitializes the whole client database. All client rows are deleted and refetched from the server, even ones that were not yet synced.
 
-Every rows on the client will be deleted and downloaded again from the server, even if some of them are not synced correctly.
-
-Use this mode with caution, since you could lost some "*out of sync client*" rows.
+Use this mode with caution: pending client changes are lost.
 
 .. code-block:: csharp
 
-	SqlSyncProvider serverProvider = new SqlSyncProvider(GetDatabaseConnectionString("AdventureWorks"));
-	SqlSyncProvider clientProvider = new SqlSyncProvider(GetDatabaseConnectionString("Client"));
-
-	var syncContext = await agent.SynchronizeAsync(SyncType.Reinitialize);
-
-	Console.WriteLine(syncContext);
+    var result = await agent.SynchronizeAsync(SyncType.Reinitialize);
 
 .. code-block:: bash
 
-	Synchronization done.
-			Total changes  uploaded: 0
-			Total changes  downloaded: 2752
-			Total changes  applied: 2752
-			Total resolved conflicts: 0
-			Total duration :0:0:1.872
+    Synchronization done.
+        Total changes  uploaded: 0
+        Total changes  downloaded: 2752
+        Total changes  applied on client: 2752
+        Total changes  applied on server: 0
+        Total resolved conflicts: 0
+        Total duration :00.00:01.872
 
-As you can see, the ``SyncType.Reinitialize`` value has marked the client database to be fully resynchronized.  
-
-The modified row on the client has not been sent to the server and then has been restored to the initial value sent by the server row.
+The locally modified row is overwritten by the server value.
 
 
 SyncType.ReinitializeWithUpload
 -----------------------------------
 
-``ReinitializeWithUpload`` will do the same job as ``Reinitialize`` except it will send any changes available from the client, before making the reinitialize phase.
-
+``ReinitializeWithUpload`` does the same as ``Reinitialize`` after uploading any pending local changes:
 
 .. code-block:: csharp
 
-	SqlSyncProvider serverProvider = new SqlSyncProvider(GetDatabaseConnectionString("AdventureWorks"));
-	SqlSyncProvider clientProvider = new SqlSyncProvider(GetDatabaseConnectionString("Client"));
-
-	var syncResult = await agent.SynchronizeAsync(SyncType.ReinitializeWithUpload);
-
-	Console.WriteLine(syncResult);
+    var result = await agent.SynchronizeAsync(SyncType.ReinitializeWithUpload);
 
 .. code-block:: bash
 
-	Synchronization done.
-			Total changes  uploaded: 1
-			Total changes  downloaded: 2752
-			Total changes  applied: 2752
-			Total resolved conflicts: 0
-			Total duration :0:0:1.923
+    Synchronization done.
+        Total changes  uploaded: 1
+        Total changes  downloaded: 2752
+        Total changes  applied on client: 2752
+        Total changes  applied on server: 1
+        Total resolved conflicts: 0
+        Total duration :00.00:01.923
 
-In this case, as you can see, the ``SyncType.ReinitializeWithUpload`` value has marked the client database to be fully resynchronized, but the edited row has been sent correctly to the server.  
+The client's edited row reaches the server, then the client is reset.
 
 
-Forcing operations on the client from server side 
+Forcing operations on the client from the server
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. warning:: This part covers some concept explained later in the next chapters:
+.. warning:: This section uses concepts covered in `Interceptors <Interceptors.html>`_ and `ASP.NET Core Web Proxy <Web.html>`_.
 
-			* Progression : `Using interceptors <Progression.html#interceptor-t>`_.
-			* HTTP architecture : `Using ASP.Net Web API <Web.html>`_ 
-
-
-| This technic applies if you do not have access to the client machine, allowing you to *force* operations from the client side.
-| It could be useful to *override* a normal synchronization, for example, with a reinitialization for a particular client, from the server side.
-
-.. note:: Forcing a reinitialization from the server is a good practice if you have an **HTTP** architecture.
-
-Here are the operation action you can use to force the client in a particular situation:
+If you don't have access to the client process — typical in HTTP scenarios — you can still force a particular operation on the next sync from the server side using the ``OnGettingOperation`` interceptor. The ``SyncOperation`` enum is:
 
 .. code-block:: csharp
 
- public enum SyncOperation
- {
-     /// <summary>
-     /// Normal synchronization
-     /// </summary>
-     Normal = 0,
+    [Flags]
+    public enum SyncOperation
+    {
+        /// <summary>Normal synchronization.</summary>
+        Normal = 0,
 
-     /// <summary>
-     /// Reinitialize the whole sync database, applying all rows from the server to the client
-     /// </summary>
-     Reinitialize = 1,
-     
-     /// <summary>
-     /// Reinitialize the whole sync database, 
-		 /// applying all rows from the server to the client, after trying a client upload
-     /// </summary>
-     ReinitializeWithUpload = 2,
+        /// <summary>Reinitialize the whole sync database from the server.</summary>
+        Reinitialize = 1,
 
-     /// <summary>
-     /// Drop all the sync metadatas even tracking tables and scope infos and make a full sync again
-     /// </summary>
-     DropAllAndSync = 4,
+        /// <summary>Reinitialize after a client upload attempt.</summary>
+        ReinitializeWithUpload = 2,
 
-     /// <summary>
-     /// Drop all the sync metadatas even tracking tables and scope infos and exit
-     /// </summary>
-     DropAllAndExit = 8,
+        /// <summary>Drop all sync metadata (tracking tables, scope info) and full sync again.</summary>
+        DropAllAndSync = 4,
 
-     /// <summary>
-     /// Deprovision stored procedures & triggers and sync again
-     /// </summary>
-     DeprovisionAndSync = 16,
+        /// <summary>Drop all sync metadata and exit.</summary>
+        DropAllAndExit = 8,
 
-     /// <summary>
-     /// Exit a Sync session without syncing
-     /// </summary>
-     AbortSync = 32,		 
- }
+        /// <summary>Deprovision stored procedures and triggers, then sync again.</summary>
+        DeprovisionAndSync = 16,
+
+        /// <summary>Exit the sync session without syncing.</summary>
+        AbortSync = 32,
+    }
 
 
-.. hint:: Use the client scope id to identify the current client trying to sync.
-
+.. hint:: Use the client scope id to identify which client is calling.
 
 .. code-block:: csharp
 
-	[HttpPost]
-	public async Task Post()
-	{
-		// Get the current scope name
-		var scopeName = this.HttpContext.GetScopeName();
-		
-		// Get the current client scope id
-		var clientScopeId = this.HttpContext.GetClientScopeId();
+    [HttpPost]
+    public async Task Post()
+    {
+        // Current scope name and client id, read from sync headers.
+        var scopeName = this.HttpContext.GetScopeName();
+        var clientScopeId = this.HttpContext.GetClientScopeId();
 
-		// override sync type to force a reinitialization from a particular client
-		if (clientScopeId == OneParticularClientScopeIdToReinitialize)
-		{
-			webServerAgentRemoteOrchestrator.OnGettingOperation(operationArgs=>
-			{
-					// this operation will be applied for the current sync
-					operationArgs.Operation = SyncOperation.Reinitialize; 
-			});
-		}
+        // Override the operation for one particular client.
+        if (clientScopeId == OneParticularClientScopeIdToReinitialize)
+        {
+            webServerAgent.RemoteOrchestrator.OnGettingOperation(args =>
+            {
+                args.Operation = SyncOperation.Reinitialize;
+            });
+        }
 
-		// handle request
-		await webServerAgent.HandleRequestAsync(this.HttpContext);
-	}
+        await webServerAgent.HandleRequestAsync(this.HttpContext);
+    }
 
 SyncDirection
 ^^^^^^^^^^^^^^^^^^^^
 
-| The `SyncType` enumeration allows you to synchronize **all** the tables.  
-| Another way to synchronize your tables is to set a direction on each of them, through the `SyncDirection` enumeration. 
-| This options is not global to all the tables, but should be set on each table.
-
-You can specify three types of direction: **Bidirectional**, **UploadOnly** or **DownloadOnly**.
-
-You can use the ``SyncDirection`` enumeration for each table in the ``SyncSetup`` object.
-
-.. code-block:: csharp
-	public enum SyncDirection
-	{
-		Bidirectional = 1,
-		DownloadOnly = 2,
-		UploadOnly = 3
-	}
-
-.. note:: ``Bidirectional`` is the default value for all tables added.
-
-Since, we need to specify the direction on each table, the ``SyncDirection`` option is available on each ``SetupTable``:
+``SyncType`` applies globally. Per-table direction is controlled by ``SyncDirection`` on each ``SetupTable``.
 
 .. code-block:: csharp
 
-	var syncSetup = new SyncSetup("SalesLT.ProductCategory", "SalesLT.ProductModel", "SalesLT.Product",
-			"SalesLT.Address", "SalesLT.Customer", "SalesLT.CustomerAddress");
-	
-	syncSetup.Tables["Customer"].SyncDirection = SyncDirection.DownloadOnly;
-	syncSetup.Tables["CustomerAddress"].SyncDirection = SyncDirection.DownloadOnly;
-	syncSetup.Tables["Address"].SyncDirection = SyncDirection.DownloadOnly;
+    [Flags]
+    public enum SyncDirection
+    {
+        /// <summary>Synced both ways. Default.</summary>
+        Bidirectional = 0,
+        /// <summary>Server to client only.</summary>
+        DownloadOnly = 2,
+        /// <summary>Client to server only.</summary>
+        UploadOnly = 4,
+        /// <summary>Schema only, no data.</summary>
+        None = 8,
+    }
 
-	var agent = new SyncAgent(clientProvider, serverProvider);
+
+.. note:: ``Bidirectional`` is the default for every table.
+
+.. code-block:: csharp
+
+    var setup = new SyncSetup("ProductCategory", "ProductModel", "Product",
+        "Address", "Customer", "CustomerAddress");
+
+    setup.Tables["Customer"].SyncDirection = SyncDirection.DownloadOnly;
+    setup.Tables["CustomerAddress"].SyncDirection = SyncDirection.DownloadOnly;
+    setup.Tables["Address"].SyncDirection = SyncDirection.DownloadOnly;
+
+    var agent = new SyncAgent(clientProvider, serverProvider);
 
 
 SyncDirection.Bidirectional
 ---------------------------------
 
-This mode is the default one. Both server and client will upload and download their rows. 
-
-Using this mode, all your tables are fully synchronized with the server.
+Default. Both server and client upload and download their changes for the table.
 
 SyncDirection.DownloadOnly
 ---------------------------------
 
-This mode allows you to specify some tables to be only downloaded from the server to the client.
-
-Using this mode, your server will not receive any rows from any clients, on the configured tables with the download only option.
+Rows flow from server to client only. Changes made on the client are not uploaded to the server.
 
 SyncDirection.UploadOnly
 ---------------------------------
 
-This mode allows you to specify some tables to be uploaded from the client to the server only.
+Rows flow from client to server only. The server does not push changes back to the client for this table.
 
-Using this mode, your server will not send any rows to any clients, but clients will sent their own modified rows to the server. 
+SyncDirection.None
+---------------------------------
 
+Schema-only replication. The table is provisioned on the client but no data is exchanged. Useful for tables that exist on both sides but should not participate in data sync.
+
+
+Resumable sync
+^^^^^^^^^^^^^^^^^^^^
+
+Long initial syncs over flaky networks can be expensive to restart. **DMS 1.3.16** introduces an opt-in resumable transport that survives interruptions.
+
+.. code-block:: csharp
+
+    // Per-call: enable resumable transport just for this sync.
+    var result = await agent.SynchronizeAsync(resumable: true, progress);
+
+    // Or via SyncOptions, to make it the default for every call:
+    var options = new SyncOptions { Resumable = true };
+    var agent = new SyncAgent(clientProvider, serverProvider, options);
+
+
+When ``Resumable`` is ``true`` and a sync is interrupted (network drop, process kill, app suspend), enough state is kept on disk on both sides so that the next ``SynchronizeAsync`` call resumes from the last successfully transferred batch instead of restarting from scratch.
+
+When ``Resumable`` is ``false`` (default), the historical all-or-nothing behavior is used.
+
+.. note:: Resumable transport is most useful in HTTP mode. To pick up the full feature you need a ``ResumableWebRemoteOrchestrator`` on the client and a durable ``WebServerOptions.SessionStore`` on the server. See `Resumable sync <Resume.html>`_ for client / server state stores, end-to-end examples, and tuning guidance.

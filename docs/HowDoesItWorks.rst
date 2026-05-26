@@ -1,27 +1,24 @@
 How does it work
 =============================================
 
-Basically, **DMS** architecture is composed of several business objects:
+The **DMS** architecture is composed of three core building blocks:
 
-* **Providers** : A provider is in charge of the communication with the local database. You can choose various providers, like ``SQL``, ``MySQL``, ``MariaDB`` or ``Sqlite``. Each provider can work on both side of the sync architecture : Server side or Client side.
-* **Orchestrators** : An orchestrator is agnostic to the underlying database. it communicates with the database through a provider. A provider is always required when you're creating a new orchestrator. We have two kind of orchestrator : *local* and *remote* (or let's say *client side* and *server side* orchestrators)
-* **SyncAgent**: There is only one sync agent. This object is responsible of the correct *flow* between two orchestrators. The sync agent will:
-  
-  * Create a local orchestrator with a typed provider.
-  * Create a remote orchestrator with a typed provider.
-  * Synchronize client and server, using all the methods from the orchestrators.
+* **Providers**: A provider talks to a single database engine. Available providers are ``SqlSyncProvider``, ``SqlSyncChangeTrackingProvider``, ``NpgsqlSyncProvider``, ``MySqlSyncProvider``, ``MariaDBSyncProvider``, and ``SqliteSyncProvider``. A provider can be used on the client side, the server side, or both (SQLite is client-only).
+* **Orchestrators**: An orchestrator drives the sync workflow against a database through a provider. There are two flavors: ``LocalOrchestrator`` (client side) and ``RemoteOrchestrator`` (server side). For HTTP scenarios you also have ``WebRemoteOrchestrator`` (client side, makes HTTP calls) and ``WebServerAgent`` (server side, hosted in an ASP.NET Core controller).
+* **SyncAgent**: The agent coordinates one local orchestrator with one remote orchestrator and exposes ``SynchronizeAsync`` to run a sync session.
+
 
 Overview
 ^^^^^^^^^^^^^^
 
-Here is the big picture of the components used in a simple synchronization, over **TCP**:
+Here is the big picture of the components used in a simple synchronization over **TCP**:
 
 .. image:: assets/Architecture01.svg
   :align: center
   :alt: Architecture
 
 
-If we take a close look to the `HelloSync <https://github.com/Mimetis/Dotmim.Sync/tree/master/Samples/HelloSync>`_  sample:
+Looking at the `HelloSync sample <https://github.com/Mimetis/Dotmim.Sync/tree/master/Samples/HelloSync>`_:
 
 .. code-block:: csharp
 
@@ -36,46 +33,35 @@ If we take a close look to the `HelloSync <https://github.com/Mimetis/Dotmim.Syn
 
   Console.WriteLine(result);
 
-There is no mention of any ``Orchestrators`` here.   
-
-| It's basically because the ``SyncAgent`` instance will create them under the hood, for simplicity.  
-| We can rewrite this code, this way:
+There are no orchestrators in the snippet above because ``SyncAgent`` creates them under the hood. The equivalent explicit form is:
 
 .. code-block:: csharp
 
-  // Create 2 providers, one for MySql, one for Sqlite.
+  // Two providers, one for MySQL on the server, one for SQLite on the client.
   var serverProvider = new MySqlSyncProvider(serverConnectionString);
   var clientProvider = new SqliteSyncProvider(clientConnectionString);
 
-  // Setup and options define the tables and some useful options.
+  // Tables to sync.
   var setup = new SyncSetup("ProductCategory", "ProductModel", "Product");
 
-  // Define a local orchestrator, using the Sqlite provider
-  // and a remote orchestrator, using the MySql provider.
+  // Local orchestrator wraps the client provider, remote wraps the server.
   var localOrchestrator = new LocalOrchestrator(clientProvider);
   var remoteOrchestrator = new RemoteOrchestrator(serverProvider);
 
-  // Create the agent with existing orchestrators
+  // Agent connects both orchestrators.
   var agent = new SyncAgent(localOrchestrator, remoteOrchestrator);
 
-  // Launch the sync
   var result = await agent.SynchronizeAsync(setup);
 
   Console.WriteLine(result);
 
 
-As you can see here, all the components are declared:
-
-* Each provider : One Sqlite and One MySql
-* Each orchestrator : a local orchestrator coupled with the Sqlite provider and a remote orchestrator coupled with the MySql provider
-* One sync agent : The sync agent instance needs of course both orchestrators to be able to launch the sync process.
+Both forms are equivalent. The explicit form is useful when you want to share an orchestrator between sync sessions or attach interceptors before the first call to ``SynchronizeAsync``.
 
 Multiple clients overview
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Of course, a real scenario will involve more clients databases.   
-Each client will have its own provider, depending on the local database type. 
-And each client will have a sync agent, responsible of the sync process:
+A real scenario typically involves several clients. Each client has its own provider and its own ``SyncAgent``:
 
 .. image:: assets/Architecture02.png
    :align: center
@@ -85,19 +71,16 @@ And each client will have a sync agent, responsible of the sync process:
 Sync over HTTP
 ^^^^^^^^^^^^^^
 
-In a real world scenario, you may want to protect your hub database (the *server side* database), if your clients are not part of your local network, like mobile devices which will communicate only through an http connection.   
-In this particular scenario, the sync agent will not be able to use a simple RemoteOrchestrator, since this one works only on a tcp network.   
-Here is coming a new orchestrator in the game. Or shoud I say *two* new orchestrators:
+In production you usually don't want to expose the server database directly. Mobile clients in particular only have HTTP available.
 
-* The ``WebRemoteOrchestrator``: This orchestrator will run locally, and will act "*as*" a orchestrator from the sync agent, but under the hood will generate an http request with a payload containing all the required information
-* The ``WebServerAgent``: On the opposite side, this web server agent is hosted through an exposed web api, and will get the incoming request from the ``WebRemoteOrchestrator`` and will then call the server provider correctly.
+In that scenario the topology changes:
 
-Here is the big picture of this more advanced scenario:
+* The ``WebRemoteOrchestrator`` runs on the client. From the agent's point of view it behaves like a regular remote orchestrator, but each call is translated into an HTTP request.
+* The ``WebServerAgent`` runs inside an ASP.NET Core controller on the server. It receives the incoming requests and dispatches them to a real ``RemoteOrchestrator`` against the server database.
 
 .. image:: assets/Architecture03.png
    :align: center
    :alt: architecture
 
 
-You can read more on the web architecture and how to implement it, here: `Asp.net Core Web Api sync proxy <./Web.html>`_ 
-
+Read more about the HTTP architecture and how to wire it up in `ASP.NET Core Web Proxy <Web.html>`_.

@@ -1,134 +1,122 @@
 Interceptors
 =====================
 
-``Ìnterceptor<T>`` : A more advanced technic to handle a lot of more events from within **DMS**
+Interceptors are the fine-grained subscription model layered on top of orchestrators. Each one is a strongly-typed extension method named ``On<Event>`` on ``BaseOrchestrator`` (so they are available on ``LocalOrchestrator``, ``RemoteOrchestrator``, and ``WebRemoteOrchestrator``) or on ``WebServerAgent`` (HTTP-only events).
+
+Both synchronous (``Action<T>``) and asynchronous (``Func<T, Task>``) overloads exist for every interceptor.
 
 Overview
 ^^^^^^^^^^^^
 
-The ``Progress<T>`` stuff is great, but as we said, it's mainly read only, and the progress is always reported **at the end of a current sync stage**.   
+``IProgress<ProgressArgs>`` (see `Progression <Progression.html>`_) gets you a sequential, read-only stream of progress events at the end of each stage. Interceptors give you more:
 
-| So, if you need a more granular control on all the progress values, you can subscribe to an ``Interceptor<T>``.   
-| On each **orchestrator**, you will find a lot of relevant methods to intercept the sync process, encapsulate in a fancy ``OnMethodAsync()`` method:
+* Many more events (open / close connection, get / execute SQL command, etc.).
+* Some events let you **modify** the workflow: cancel a table, swap a stored procedure name, change the operation type, override an error resolution.
 
 .. image:: assets/interceptor01.png
 
-
-Imagine you have a table that should **never** be synchronized on one particular client (and is part of your ``SyncSetup``). You're able to use an interceptor like this:
+Example: ban a specific table from syncing on this client.
 
 .. code-block:: csharp
 
-    // We are using a cancellation token that will be passed as an argument 
-    // to the SynchronizeAsync() method !
     var cts = new CancellationTokenSource();
 
-    agent.LocalOrchestrator.OnTableChangesApplying((args) =>
+    agent.LocalOrchestrator.OnTableChangesApplying(args =>
     {
         if (args.SchemaTable.TableName == "Table_That_Should_Not_Be_Sync")
             args.Cancel = true;
     });
 
-Be careful, your table will never be synced !
+
+.. warning:: That table will never be synced once you cancel the apply. Use this only when you really mean it.
+
 
 Intercepting rows
 -----------------------
 
-| You may want to intercept all the rows that have just been selected from the source (client or server), and are about to be sent to their destination (server or client).   
-| Or even intercept all the rows that are going to be applied on a destination database.   
-| That way, you may be able to modify these rows, to meet your business / requirements rules.  
+DMS exposes interceptors at three granularity levels:
 
-.. hint:: You will find the sample used for this chapter, here : `Spy sample <https://github.com/Mimetis/Dotmim.Sync/tree/master/Samples/Spy>`_. 
+* **Database** level: the whole batch info, before / after.
+* **Table** level: one specific table.
+* **Row** level: individual rows or batches of rows in memory.
 
-``DMS`` workload allows you to intecept different kinds of events on different levels:
+For each level, a ``before`` event ends in ``-ing`` (``OnDatabaseChangesApplying``) and the matching ``after`` event in ``-ed`` (``OnDatabaseChangesApplied``).
 
-- Database level
-- Table level
-- Row level 
-
-On each side (client and server), you will have:
-
-- Interceptors during the "_Select_" phase : Getting changes from the database.
-- Interceptors during the "_Apply_" phase : Applying Insert / Delete or Update to the database.
-- Interceptors for extra workloads like conflict resolution, serialization, converters & so on ...
-
-On each level you will have:
-
-- A before event: Generally ending by "_ing_" like ``OnDatabaseChangesApplying``.
-- An after event: Generally ending by "_ied_" like ``OnDatabaseChangesApplied``.
+.. hint:: Sample: `Spy sample <https://github.com/Mimetis/Dotmim.Sync/tree/master/Samples/Spy>`_.
 
 
-Datasource level
-^^^^^^^^^^^^^^^^^^^^^^
+Connection and transaction
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-| We have some interceptors that are not related to a specific table, but to the whole datasource.
-| They are tight to the connection, the transaction or the command used to get the changes, apply changes or even handle conflicts and errors.
+These interceptors are not tied to a specific table; they fire for every database operation DMS performs.
 
 
 OnConnectionOpen
 -------------------------
 
-The ``OnConnectionOpen`` event is raised when a connection is opened, through the underline provider.
+Fires when the underlying provider opens a connection. Args expose ``Connection``.
 
-TODO
 
 OnReConnect
 -------------------------
 
-The ``OnReConnect`` event is raised when a connection is re-opened, through the underline provider.
-
-DMS is using a custom retry policy, inspired from `Polly <http://www.thepollyproject.org/>`_  to manage a connection retry policy.
-
+Fires when DMS retries to open a connection after a transient failure. DMS uses a built-in retry policy inspired by `Polly <http://www.thepollyproject.org/>`_.
 
 .. code-block:: csharp
 
-    localOrchestrator.OnReConnect(args => {
+    localOrchestrator.OnReConnect(args =>
+    {
         Console.WriteLine($"[Retry] Can't connect to database {args.Connection?.Database}. " +
-        $"Retry N°{args.Retry}. " +
-        $"Waiting {args.WaitingTimeSpan.Milliseconds}. Exception:{args.HandledException.Message}.");
-    });    
+            $"Retry N°{args.Retry}. " +
+            $"Waiting {args.WaitingTimeSpan.TotalMilliseconds} ms. " +
+            $"Exception: {args.HandledException.Message}");
+    });
 
-You can customize the retry policy, only on http mode, when using a ``WebRemoteOrchestrator`` instance.
+You can also tweak the retry policy on a ``WebRemoteOrchestrator``:
 
 .. code-block:: csharp
 
     var webRemoteOrchestrator = new WebRemoteOrchestrator(serviceUri);
-
-    // limit to 2 retries only
     webRemoteOrchestrator.SyncPolicy.RetryCount = 2;
 
+Or use a built-in policy:
+
 .. code-block:: csharp
 
-    var webRemoteOrchestrator = new WebRemoteOrchestrator(serviceUri);
+    var webRemoteOrchestrator = new WebRemoteOrchestrator(serviceUri)
+    {
+        SyncPolicy = SyncPolicy.WaitAndRetryForever(TimeSpan.FromSeconds(1)),
+    };
 
-    // retry for ever (not sure it's a good idea, that being said)
-    webRemoteOrchestrator.SyncPolicy = SyncPolicy.WaitAndRetryForever(TimeSpan.FromSeconds(1));
+
+OnConnectionClose
+-------------------------
+
+Fires when the connection is closed.
 
 
 OnTransactionOpen
 -------------------------
 
-The ``OnTransactionOpen`` event is raised when a transaction is opened, through the underline provider.
+Fires when a transaction is opened on the underlying connection.
 
-TODO
-
-OnConnectionClose
--------------------------
-
-The ``OnConnectionClose`` event is raised when a connection is closed, through the underline provider.
-
-TODO
 
 OnTransactionCommit
 -------------------------
 
-The ``OnTransactionCommit`` event is raised when a transaction is committed, through the underline provider.
+Fires just before a transaction is committed.
 
-TODO
+
+OnTransientErrorOccured
+-------------------------
+
+Fires when a transient error is detected (the same condition that triggers a retry).
+
 
 OnGetCommand
 -----------------
 
-The OnGetCommand interceptor is happening when a command is retrieved from the underline provider (``SqlSyncProvider``, ``MySqlSyncProvider``, etc..)
+Fires when DMS retrieves a ``DbCommand`` from the provider (a stored procedure call, an ad-hoc SQL command, etc.). You can rewrite the command text, swap parameters, etc.
 
 .. code-block:: csharp
 
@@ -136,16 +124,16 @@ The OnGetCommand interceptor is happening when a command is retrieved from the u
     {
         if (args.Command.CommandType == CommandType.StoredProcedure)
         {
-            args.Command.CommandText = args.Command.CommandText.Replace("_filterproducts_", "_default_");
+            args.Command.CommandText = args.Command.CommandText
+                .Replace("_filterproducts_", "_default_");
         }
     });
-
 
 
 OnExecuteCommand
 --------------------
 
-The ``OnExecuteCommand`` interceptor is happening when a command is about to be executed on the client or server.
+Fires just before a command is executed.
 
 .. code-block:: csharp
 
@@ -155,751 +143,386 @@ The ``OnExecuteCommand`` interceptor is happening when a command is about to be 
     });
 
 
-
 Selecting changes
 ^^^^^^^^^^^^^^^^^^^^
 
-Regarding the rows selection from your client or server:
+Selection happens before any apply: each side reads its own pending changes from the database.
 
-- ``OnDatabaseChangesSelecting`` : Raised before selecting rows. You have info about the tmp folder and batch size that will be used.
-- ``OnTableChangesSelecting`` : Raised before selecting rows for a particular table : You have info about the current table and the ``DbCommand`` used to fetch data.
+* ``OnDatabaseChangesSelecting``: about to start selecting. You see the temp folder used and the batch size.
+* ``OnTableChangesSelecting``: about to query a specific table. You can mutate the ``DbCommand``.
+* ``OnRowsChangesSelected``: a row has been read but not yet serialized. You can mutate ``args.SyncRow``. Fires for every row, so be careful with allocations.
+* ``OnTableChangesSelected``: a table has been fully selected and serialized to disk.
+* ``OnDatabaseChangesSelected``: every table has been selected. The ``BatchInfo`` is on disk.
 
-On the other side, once rows are selected, you still can:
-
-- ``OnRowsChangesSelected`` : Raised once a row is read from the databse, but not yet serialized to disk. Row is still in memory, and connection / reader still opened.
-- ``OnTableChangesSelected`` : Raised once a table changes as been fully read. Changes (all batches for this table) are serialized to disk. Connection / reader are closed.
-- ``OnDatabaseChangesSelected`` : Raised once all changes are grabbed from the local database. Changes are serialized to disk.
 
 OnDatabaseChangesSelecting
 -------------------------------
 
-Occurs when changes are going to be queried from the underline database.
-
 .. code-block:: csharp
 
     var localOrchestrator = new LocalOrchestrator(clientProvider);
-    localOrchestrator.OnDatabaseChangesSelecting(args => {
-        Console.WriteLine($"Getting changes from local database:");
-        Console.WriteLine($"Batch directory: {args.BatchDirectory}. Batch size: {args.BatchSize}. 
-                            Is first sync: {args.IsNew}");
+    localOrchestrator.OnDatabaseChangesSelecting(args =>
+    {
+        Console.WriteLine("Getting changes from local database:");
+        Console.WriteLine($"Batch directory: {args.BatchDirectory}. " +
+                          $"Batch size: {args.BatchSize}. " +
+                          $"Is first sync: {args.IsNew}");
         Console.WriteLine($"From: {args.FromTimestamp}. To: {args.ToTimestamp}.");
-    }
+    });
 
 
 OnTableChangesSelecting
 ---------------------------
 
-| Occurs when changes are going to be queried from the underline database for a particular table. 
-| You have access to the command / connection / transaction that going to be used to query the database.
-
-.. note:: The ``Command`` property can be changed here, depending on your needs.
+.. note:: ``args.Command`` can be modified.
 
 .. code-block:: csharp
 
-    var localOrchestrator = new LocalOrchestrator(clientProvider);
     localOrchestrator.OnTableChangesSelecting(args =>
     {
-        Console.WriteLine($"Getting changes from local database " +
-                          $"for table:{args.SchemaTable.GetFullName()}");
-
-        Console.WriteLine($"{args.Command.CommandText}");
+        Console.WriteLine($"Selecting changes for {args.SchemaTable.GetFullName()}");
+        Console.WriteLine(args.Command.CommandText);
     });
 
 
 OnRowsChangesSelected
 -------------------------
 
-| Occurs when a row is selected from the underline database.
-| You have access to the ``SyncRow`` row property, the table schema and the state of the row (Modified, Deleted).
-| You can change any value from the ``SyncRow`` property on the fly if needed.
+.. warning:: Fires once per row. The connection is still open. Allocations and slow code here will hurt sync throughput.
 
 .. code-block:: csharp
 
-    var localOrchestrator = new LocalOrchestrator(clientProvider);
     localOrchestrator.OnRowsChangesSelected(args =>
     {
-        Console.WriteLine($"Row read from local database for table:{args.SchemaTable.GetFullName()}");
-        Console.WriteLine($"{args.SyncRow}");
+        Console.WriteLine($"Row read for {args.SchemaTable.GetFullName()}: {args.SyncRow}");
     });
 
-.. warning:: This event is raised for each row, so be careful with the number of rows you have in your database.
-
-    Plus, this event is raised during the reading phase of the database, that means that the connection is still opened.
-
-    If you have a lot of rows, you may want to use the ``OnTableChangesSelected`` event instead, that occurs once the table is fully read, and results are serialized on disk.
 
 OnTableChangesSelected
 -------------------------
 
-| Occurs when a table is fully selected from the underline database.
+Fires when a table has been fully selected and serialized.
 
 .. code-block:: csharp
 
     localOrchestrator.OnTableChangesSelected(args =>
     {
-        Console.WriteLine($"Table: {args.SchemaTable.GetFullName()} read. " +
-                          $"Rows count:{args.BatchInfo.RowsCount}.");" +
-
-        Console.WriteLine($"Directory: {args.BatchInfo.DirectoryName}. " +
-                          $"Number of files: {args.BatchPartInfos?.Count()} ");
-        
+        Console.WriteLine($"Table: {args.SchemaTable.GetFullName()}. " +
+                          $"Rows: {args.BatchInfo?.RowsCount}.");
+        Console.WriteLine($"Directory: {args.BatchInfo?.DirectoryName}. " +
+                          $"Files: {args.BatchPartInfos?.Count()}");
         Console.WriteLine($"Changes: {args.TableChangesSelected.TotalChanges} " +
                           $"({args.TableChangesSelected.Upserts}/{args.TableChangesSelected.Deletes})");
-    });    
+    });
 
-.. hint:: You have access to the serialized rows on disk, in the ``BatchInfo`` property. 
-
-    You can iterate through all the files, and read the rows from the files, using the `LoadTableFromBatchInfoAsync <Orchestrators.html#loadtablefrombatchinfoasync>`_ 
+.. hint:: ``args.BatchInfo`` is the on-disk representation. Read its content with ``LoadTableFromBatchInfo`` (see `Orchestrators <Orchestrators.html>`_).
 
 
 OnDatabaseChangesSelected
 -----------------------------
 
-| Occurs when all changes are selected from the underline database.
-| The ``BatchInfo`` property is fully filled with all batch files.
-
+Fires when the entire batch info has been built.
 
 .. code-block:: csharp
 
     localOrchestrator.OnDatabaseChangesSelected(args =>
     {
-        Console.WriteLine($"Directory: {args.BatchInfo.DirectoryName}. "
-                          $"Number of files: {args.BatchInfo.BatchPartsInfo?.Count()} ");
-        
+        Console.WriteLine($"Directory: {args.BatchInfo.DirectoryName}. " +
+                          $"Files: {args.BatchInfo.BatchPartsInfo?.Count()}");
         Console.WriteLine($"Total: {args.ChangesSelected.TotalChangesSelected} " +
-                            $"({args.ChangesSelected.TotalChangesSelectedUpdates}" +
-                            $"/{args.ChangesSelected.TotalChangesSelectedDeletes})");
-        
+                          $"({args.ChangesSelected.TotalChangesSelectedUpdates}/{args.ChangesSelected.TotalChangesSelectedDeletes})");
+
         foreach (var table in args.ChangesSelected.TableChangesSelected)
-            Console.WriteLine($"Table: {table.TableName}. "
-                              $"Total: {table.TotalChanges} ({table.Upserts / table.Deletes}");
-    });        
+            Console.WriteLine($"Table: {table.TableName}. " +
+                              $"Total: {table.TotalChanges} ({table.Upserts} / {table.Deletes})");
+    });
 
-.. hint:: You have access to the serialized rows on disk, in the ``BatchInfo`` property. 
 
-    You can iterate through all the files, and read the rows from the files, using the `LoadTablesFromBatchInfoAsync <Orchestrators.html#loadtablesfrombatchinfoasync>`_
+OnBatchChangesCreated
+-------------------------
 
+Fires after a batch part has been written to disk during the selection phase.
 
 
 Applying changes
 ^^^^^^^^^^^^^^^^^^^^
 
-Regarding the rows to apply on your client (or server) database, you can intercept different kind of events:
+Apply happens once selection is done: the receiving side reads the batch info and writes the rows.
 
-- ``OnDatabaseChangesApplying``: Rows are serialized locally in a batch info folder BUT they are not yet read internally and are not in memory. You can iterate over all the files and see if you have rows to apply.
-- ``OnTableChangesApplying``: Rows are still on disk and not in memory. This interceptor is called for each table that has rows to apply.
-- ``OnRowsChangesApplying`` : Rows ARE now in memory, in a batch (depending on batch size and provider max batch), and are going to be applied.
-
-On the other side, once rows are applied, you can iterate through different interceptors:
-
-- ``OnTableChangesApplied``: Contains a summary of all rows applied on a table for a particular state (DataRowState.Modified or Deleted).
-- ``OnDatabaseChangesApplied`` : Contains a summary of all changes applied on the database level.
+* ``OnDatabaseChangesApplying``: rows are on disk, no apply has run yet. You can iterate over the batch info before changes touch the local database.
+* ``OnTableChangesApplying``: about to apply changes to one table (one state at a time: Modified, Deleted).
+* ``OnBatchChangesApplying``: about to apply one batch part for one table.
+* ``OnRowsChangesApplying``: about to apply a chunk of in-memory rows to the provider.
+* ``OnRowsChangesApplied``: a chunk of rows has been applied.
+* ``OnBatchChangesApplied``: a batch part has been fully applied.
+* ``OnTableChangesApplied``: every change for a table has been applied.
+* ``OnDatabaseChangesApplied``: the whole batch info has been applied.
 
 
 OnDatabaseChangesApplying
 -------------------------------
 
-| The ``OnDatabaseChangesApplying`` interceptor is happening when changes are going to be applied on the client or server.
-| The changes are not yet loaded in memory. They are all stored locally in a temporary folder.
-
-To be able to load batches from the temporary folder, or save rows, you can use the `LoadTablesFromBatchInfoAsync <Orchestrators.html#loadtablesfrombatchinfoasync>`_ and `SaveTableToBatchPartInfoAsync <Orchestrators.html#savetabletobatchpartinfoasync>`_ methods 
+.. note:: Rows are on disk, not yet in memory. Use ``LoadTablesFromBatchInfo`` / ``SaveTableToBatchPartInfoAsync`` (see `Orchestrators <Orchestrators.html>`_) to inspect or rewrite batch parts.
 
 .. code-block:: csharp
 
-    localOrchestrator.OnDatabaseChangesApplying(async args =>
+    localOrchestrator.OnDatabaseChangesApplying(args =>
     {
         foreach (var table in args.ApplyChanges.Schema.Tables)
         {
-            // loading in memory all batches containing rows for the current table
-            var syncTable = await localOrchestrator.LoadTableFromBatchInfoAsync(
+            var syncTable = localOrchestrator.LoadTableFromBatchInfo(
                 args.ApplyChanges.BatchInfo, table.TableName, table.SchemaName);
 
-            Console.WriteLine($"Changes for table {table.TableName}. Rows:{syncTable.Rows.Count}");
+            Console.WriteLine($"Changes for {table.TableName}: {syncTable.Rows.Count} rows");
             foreach (var row in syncTable.Rows)
                 Console.WriteLine(row);
-
-            Console.WriteLine();
-
         }
     });
+
 
 OnTableChangesApplying
 ----------------------------
 
-| The ``OnTableChangesApplying`` is happening right before rows are applied on the client or server.
-| Like ``OnDatabaseChangesApplying`` the changes are not yet loaded in memory. They are all stored locally in a temporary folder.
-| Be careful, this interceptor is called for each state (Modified / Deleted), so be sure to check the state of the rows:
-| Note that this interceptor is not called if the current tables has no rows to applied.
+Fires once per (table, state). Note that it doesn't fire if the table has nothing to apply for that state.
 
 .. code-block:: csharp
 
-    // Just before applying changes locally, at the table level
-    localOrchestrator.OnTableChangesApplying(async args =>
+    localOrchestrator.OnTableChangesApplying(args =>
     {
-        if (args.BatchPartInfos != null)
+        if (args.BatchPartInfos == null)
+            return;
+
+        var syncTable = localOrchestrator.LoadTableFromBatchInfo(
+            args.BatchInfo,
+            args.SchemaTable.TableName,
+            args.SchemaTable.SchemaName,
+            args.State);
+
+        if (syncTable?.HasRows == true)
         {
-            var syncTable = await localOrchestrator.LoadTableFromBatchInfoAsync(
-                args.BatchInfo, args.SchemaTable.TableName, args.SchemaTable.SchemaName, args.State);
-
-            if (syncTable != null && syncTable.HasRows)
-            {
-                Console.WriteLine($"- --------------------------------------------");
-                Console.WriteLine($"- Applying [{args.State}] 
-                        changes to Table {args.SchemaTable.GetFullName()}");
-
-                foreach (var row in syncTable.Rows)
-                    Console.WriteLine(row);
-            }
-
+            Console.WriteLine($"Applying [{args.State}] changes to {args.SchemaTable.GetFullName()}");
+            foreach (var row in syncTable.Rows)
+                Console.WriteLine(row);
         }
     });
 
 
-OnBatchChangesApplying
--------------------------------
+OnBatchChangesApplying / OnBatchChangesApplied
+--------------------------------------------------
 
-| The ``OnBatchChangesApplying`` interceptor is happening when a batch for a particular table is about to be applied on the local data source.
-| The number of rows contained in each batch file is depending on the value you have set in your SyncOptions instance : ``SyncOptions.BatchSize`` (Default is 2 Mo)
-| This interceptor is called for each batch file, and for each state (``Modified`` / ``Deleted``).
-| That means that if you have **1000** batches, and **2** calls of this interceptor (one for ``Modified``, one for ``Deleted``), you will fire **2000** times this interceptor.
+One batch part for one table. The batch size depends on ``SyncOptions.BatchSize``.
 
 .. code-block:: csharp
 
     agent.LocalOrchestrator.OnBatchChangesApplying(async args =>
     {
-        if (args.BatchPartInfo != null)
-        {
-            Console.WriteLine($"FileName:{args.BatchPartInfo.FileName}. RowsCount:{args.BatchPartInfo.RowsCount} ");
-            Console.WriteLine($"Applying rows from this batch part info:");
+        if (args.BatchPartInfo == null)
+            return;
 
-            var table = await agent.LocalOrchestrator.LoadTableFromBatchPartInfoAsync(args.BatchInfo,
-                            args.BatchPartInfo, args.State, args.Connection, args.Transaction);
+        Console.WriteLine($"FileName: {args.BatchPartInfo.FileName}. " +
+                          $"RowsCount: {args.BatchPartInfo.RowsCount}");
 
-            foreach (var row in table.Rows)
-                Console.WriteLine(row);
+        var table = agent.LocalOrchestrator.LoadTableFromBatchPartInfo(
+            Path.Combine(args.BatchInfo.GetDirectoryFullPath(), args.BatchPartInfo.FileName),
+            args.State);
 
-        }
+        foreach (var row in table.Rows)
+            Console.WriteLine(row);
     });
-
 
 
 OnRowsChangesApplying
 -----------------------------------
 
-The ``OnRowsChangesApplying`` interceptor is happening just before applying a batch of rows to the local (client or server) database.
-
-The number of rows to be applied here is depending on:
-
-- The batch size you have set in your SyncOptions instance : ``SyncOptions.BatchSize`` (Default is 2 Mo)
-- The max number of rows to applied in one single instruction : ``Provider.BulkBatchMaxLinesCount`` (Default is 10 000 rows per instruction)
+Fires just before DMS applies a chunk of rows in memory. The chunk size depends on the provider and the bulk capabilities (TVPs on SQL Server).
 
 .. code-block:: csharp
 
-    localOrchestrator.OnRowsChangesApplying(async args =>
+    localOrchestrator.OnRowsChangesApplying(args =>
     {
-        Console.WriteLine($"- --------------------------------------------");
-        Console.WriteLine($"- In memory rows that are going to be Applied");
+        Console.WriteLine("In-memory rows about to be applied:");
         foreach (var row in args.SyncRows)
             Console.WriteLine(row);
-
-        Console.WriteLine();
     });
 
 
-OnTableChangesApplied
-----------------------------
+OnRowsChangesApplied / OnRowsChangesFallbackFromBatchToSingleRowApplying
+----------------------------------------------------------------------------
 
-The ``OnTableChangesApplied`` interceptor is happening when all rows, for a specific table, are applied on the local (client or server) database.
-
-TODO
+``OnRowsChangesApplied`` fires after each chunk has been applied. ``OnRowsChangesFallbackFromBatchToSingleRowApplying`` fires when DMS could not apply a chunk in bulk and is about to fall back to row-by-row apply.
 
 
-OnBatchChangesApplying
--------------------------------
+OnTableChangesApplied / OnDatabaseChangesApplied
+------------------------------------------------------
 
-| The ``OnBatchChangesApplied`` interceptor is happening when a batch for a particular table has been applied.
-
-.. code-block:: csharp
-
-    agent.LocalOrchestrator.OnBatchChangesApplied(async args =>
-    {
-        if (args.BatchPartInfo != null)
-        {
-            Console.WriteLine($"FileName:{args.BatchPartInfo.FileName}. RowsCount:{args.BatchPartInfo.RowsCount} ");
-            Console.WriteLine($"Applied rows from this batch part info:");
-
-            var table = await agent.LocalOrchestrator.LoadTableFromBatchPartInfoAsync(args.BatchInfo,
-                            args.BatchPartInfo, args.State, args.Connection, args.Transaction);
-
-            foreach (var row in table.Rows)
-                Console.WriteLine(row);
-
-        }
-    });
-
-
-
-
-OnDatabaseChangesApplied
--------------------------------
-
-The ``OnDatabaseChangesApplied`` interceptor is happening when all changes are applied on the client or server.
-
-TODO
+Fire after a whole table or the whole batch info has been applied. ``args.TableChangesApplied`` and ``args.ChangesAppliedOnTable`` give summary statistics.
 
 
 Snapshots
 ^^^^^^^^^^^^^^
 
-See how snapshots work in the `Snapshots <Snapshot.html>`_ section.
+See how snapshots work in `Snapshot <Snapshot.html>`_.
 
-OnSnapshotCreating
--------------------------
-
-The ``OnSnapshotCreating`` interceptor is happening when a snapshot is going to be created from the server side
-
-TODO
-
-OnSnapshotCreated
--------------------------
-
-The ``OnSnapshotCreated`` interceptor is happening when a snapshot is created from the server side.
-
-TODO
-
-OnSnapshotApplying
--------------------------
-
-The ``OnSnapshotApplying`` interceptor is happening when a snapshot is going to be applied on the client side.
-
-TODO
-
-OnSnapshotApplied
--------------------------
-
-The ``OnSnapshotApplied`` interceptor is happening when a snapshot is applied on the client side.
-
-TODO
+* ``OnSnapshotCreating``: server is about to create a snapshot.
+* ``OnSnapshotCreated``: server finished creating a snapshot.
+* ``OnSnapshotApplying``: client is about to apply a snapshot.
+* ``OnSnapshotApplied``: client finished applying a snapshot.
 
 
-Specific
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Schema and provisioning
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-OnProvisioning
-------------------
+Provisioning interceptors fire when DMS creates or removes the metadata it needs.
 
-The ``OnProvisioning`` interceptor is happening when the database is being provisioned.
-
-TODO
-
-
-OnProvisioned
-------------------
-
-The ``OnProvisioned`` interceptor is happening when the database is provisioned.
-
-TODO
+* ``OnProvisioning`` / ``OnProvisioned``
+* ``OnDeprovisioning`` / ``OnDeprovisioned``
+* ``OnSchemaLoading`` / ``OnSchemaLoaded``
+* ``OnSchemaNameCreating`` / ``OnSchemaNameCreated``
+* ``OnTableCreating`` / ``OnTableCreated`` / ``OnTableDropping`` / ``OnTableDropped``
+* ``OnTrackingTableCreating`` / ``OnTrackingTableCreated`` / ``OnTrackingTableDropping`` / ``OnTrackingTableDropped``
+* ``OnStoredProcedureCreating`` / ``OnStoredProcedureCreated`` / ``OnStoredProcedureDropping`` / ``OnStoredProcedureDropped``
+* ``OnTriggerCreating`` / ``OnTriggerCreated`` / ``OnTriggerDropping`` / ``OnTriggerDropped``
+* ``OnScopeInfoTableCreating`` / ``OnScopeInfoTableCreated`` / ``OnScopeInfoTableDropping`` / ``OnScopeInfoTableDropped``
+* ``OnScopeInfoLoading`` / ``OnScopeInfoLoaded`` / ``OnScopeSaving`` / ``OnScopeSaved``
 
 
-OnDeprovisioning
-------------------
+Metadata cleanup
+^^^^^^^^^^^^^^^^^^
 
-The ``OnDeprovisioning`` interceptor is happening when the database is being deprovisioned.
+* ``OnMetadataCleaning``: about to remove tracking-table tombstones.
+* ``OnMetadataCleaned``: cleanup finished. ``args`` contains the per-table counts.
 
-TODO
-
-OnDeprovisioned
-------------------
-
-The ``OnDeprovisioned`` interceptor is happening when the database is deprovisioned.
-
-TODO
+See `Metadatas <Metadatas.html>`_.
 
 
-OnLocalTimestampLoading
-------------------------------
+Errors and conflicts
+^^^^^^^^^^^^^^^^^^^^^^^^
 
-OnLocalTimestampLoaded
-------------------------------
+* ``OnApplyChangesConflictOccured``: a conflict was detected during apply. Set ``args.Resolution`` (a ``ConflictResolution``) and / or ``args.FinalRow`` to resolve it. Call ``await args.GetSyncConflictAsync()`` to read the local and remote rows. See `Conflict <Conflict.html>`_.
+* ``OnApplyChangesErrorOccured``: a row failed to apply. Set ``args.Resolution`` (an ``ErrorResolution``) to control retry / continue / throw. See `Errors <Errors.html>`_.
 
-OnSchemaLoading
---------------------
-
-OnSchemaLoaded
---------------------
-
-OnMetadataCleaning
--------------------------
-
-OnMetadataCleaned
--------------------------
-
-OnApplyChangesConflictOccured
----------------------------------
-
-See `Conflicts <Conflict.html>`_ 
-
-OnApplyChangesErrorOccured
----------------------------------
-
-See `Errors <Errors.html>`_ 
-
-OnSerializingSyncRow
-------------------------------
-
-OnDeserializingSyncRow
-------------------------------
+Both interceptors are usually attached to the side that detects the failure: conflicts on the **remote** orchestrator, apply errors on the side performing the apply.
 
 
+Serialization
+^^^^^^^^^^^^^^^^^^
 
-OnSessionBegin
--------------------------
+* ``OnSerializingSyncRow``: fires before a single row is serialized.
+* ``OnDeserializingSyncRow``: fires after a single row is deserialized.
+
+Use these for high-fidelity row mutations that need to round-trip through the wire format.
 
 
-OnSessionEnd
--------------------------
+Session lifecycle
+^^^^^^^^^^^^^^^^^^^^^
+
+* ``OnSessionBegin``: a new sync session is starting.
+* ``OnSessionEnd``: the sync session has finished.
 
 
+Operation control
+^^^^^^^^^^^^^^^^^^^^^
 
-OnConflictingSetup
--------------------------
+* ``OnGettingOperation``: server-side hook fired when the server resolves the operation type for an incoming client. Use it to force ``Reinitialize``, ``ReinitializeWithUpload``, ``DropAllAndSync``, ``DeprovisionAndSync``, ``AbortSync``, etc.
+* ``OnConflictingSetup``: client-side hook fired when the local setup mismatches the server's. Set ``args.Action`` to ``Continue`` (after fixing your local schema), ``Abort``, or ``Rollback``.
 
-OnGettingOperation
--------------------------
-
-The ``OnGettingOperation`` interceptor is happening when a server receive a request from a client for initiate a synchronization.
-
-From here, you have the option to **override** the operation, using the ``SyncOperation`` enumeration:
-
-.. code-block:: csharp
-
-    public enum SyncOperation
-    {
-        /// <summary>
-        /// Normal synchronization
-        /// </summary>
-        Normal = 0,
-
-        /// <summary>
-        /// Reinitialize the whole sync database, 
-        /// applying all rows from the server to the client
-        /// </summary>
-        Reinitialize = 1,
-        
-        /// <summary>
-        /// Reinitialize the whole sync database, 
-        /// applying all rows from the server to the client, after trying a client upload
-        /// </summary>
-        ReinitializeWithUpload = 2,
-
-        /// <summary>
-        /// Drop all the sync metadatas even tracking tables and 
-        /// scope infos and make a full sync again
-        /// </summary>
-        DropAllAndSync = 4,
-
-        /// <summary>
-        /// Drop all the sync metadatas even tracking tables and 
-        /// scope infos and exit
-        /// </summary>
-        DropAllAndExit = 8,
-
-        /// <summary>
-        /// Deprovision stored procedures and triggers and sync again
-        /// </summary>
-        DeprovisionAndSync = 16,
-
-        /// <summary>
-        /// Exit a Sync session without syncing
-        /// </summary>
-        AbortSync = 32,
-    }
-
-Useful for example to force a ReinitializeWithUpload operation, when you have a conflict on the client side, and you want to force the client to upload all his changes to the server, then reinitialize everything.
-
-.. hint:: This method is usefull most of the time, from the server side, when using a proxy ASP.NET Core Web API. 
-
+Example: force one specific client to reinitialize from the server controller:
 
 .. code-block:: csharp
 
     [HttpPost]
     public async Task Post()
     {
-
-        var scopeName = context.GetScopeName();
-        var clientScopeId = context.GetClientScopeId();
+        var scopeName = HttpContext.GetScopeName();
+        var clientScopeId = HttpContext.GetClientScopeId();
 
         var webServerAgent = webServerAgents.First(wsa => wsa.ScopeName == scopeName);
 
-        webServerAgent.RemoteOrchestrator.OnGettingOperation(operationArgs =>
+        webServerAgent.RemoteOrchestrator.OnGettingOperation(args =>
         {
-            if (scopeName == "all" && clientScopeId == A_PARTICULAR_CLIENT_ID_TO_CHECK)
-                operationArgs.SyncOperation = SyncOperation.ReinitializeWithUpload;
-
+            if (scopeName == "all" && clientScopeId == OneParticularClientScopeIdToReset)
+                args.Operation = SyncOperation.ReinitializeWithUpload;
         });
 
-        await webServerAgent.HandleRequestAsync(context);
+        await webServerAgent.HandleRequestAsync(HttpContext);
     }
+
 
 OnOutdated
 -------------------------
 
-The ``OnOutdated`` interceptor is happening when a client is outdated. You can use this interceptor to force the client to reinitialize its database if it is outdated.
-
-By default, an error is raised, and sync is stopped. This event is raised only on the client side.
+Fires on the client when the server determines that the client's last sync timestamp predates the server's metadata retention. By default DMS throws. Use this hook to ask the user (or your business logic) to reinitialize:
 
 .. code-block:: csharp
 
     agent.LocalOrchestrator.OnOutdated(oa =>
     {
-        Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine("local database is too old to synchronize with the server.");
-        Console.ResetColor();
-        Console.WriteLine("Do you want to synchronize anyway, and potentially lost data ? ");
-        Console.Write("Enter a value ('r' for reinitialize or 'ru' for reinitialize with upload): ");
+        Console.WriteLine("Local database is too old to sync with the server.");
+        Console.WriteLine("'r' to reinitialize, 'ru' to reinitialize with upload, anything else to abort.");
         var answer = Console.ReadLine();
 
-        if (answer.ToLowerInvariant() == "r")
+        if (string.Equals(answer, "r", StringComparison.OrdinalIgnoreCase))
             oa.Action = OutdatedAction.Reinitialize;
-        else if (answer.ToLowerInvariant() == "ru")
+        else if (string.Equals(answer, "ru", StringComparison.OrdinalIgnoreCase))
             oa.Action = OutdatedAction.ReinitializeWithUpload;
-
     });
 
 
-
-Web
+HTTP interceptors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Some interceptors are specific to web orchestrators ``WebRemoteOrchestrator`` & ``WebServerAgent``.
-
-These orchestrators will let you intercept all the ``Requests`` and ``Responses`` that will be generated by ``DMS`` during a web call.
+Some interceptors are specific to ``WebRemoteOrchestrator`` (client) and ``WebServerAgent`` (server). They surface the actual HTTP request / response and the points where data is exchanged.
 
 WebServerAgent
 ------------------------
 
-The two first interceptors will intercept basically all requests and responses coming in and out:
-
-* ``webServerAgent.OnHttpGettingRequest(args => {})``
-* ``webServerAgent.OnHttpSendingResponse(args => {})``
-
-Each of them will let you access the `HttpContext`, `SyncContext` and `SessionCache` instances:
-
-.. code-block:: csharp
-
-    webServerAgent.OnHttpGettingRequest(args =>
-    {
-        var httpContext = args.HttpContext;
-        var syncContext = args.Context;
-        var session = args.SessionCache;
-    });
-
-
-The two last new web server http interceptors will let you intercept all the calls made when server *receives* client changes and when server *sends back* server changes.
-
-* ``webServerAgent.OnHttpGettingChanges(args => {});``
-* ``webServerAgent.OnHttpSendingChanges(args => {});``
-
-Here is a quick example using all of them:
+* ``OnHttpGettingRequest``: an incoming HTTP request just arrived from a client.
+* ``OnHttpSendingResponse``: the server is about to send the HTTP response.
+* ``OnHttpGettingChanges``: the server has received a chunk of client changes.
+* ``OnHttpSendingChanges``: the server is about to send a chunk of server changes.
 
 .. code-block:: csharp
 
     webServerAgent.OnHttpGettingRequest(req =>
-        Console.WriteLine("Receiving Client Request:" + req.Context.SyncStage + 
-        ". " + req.HttpContext.Request.Host.Host + "."));
+        Console.WriteLine($"Request: {req.Context.SyncStage}. {req.HttpContext.Request.Host.Host}"));
 
     webServerAgent.OnHttpSendingResponse(res =>
-        Console.WriteLine("Sending Client Response:" + res.Context.SyncStage + 
-        ". " + res.HttpContext.Request.Host.Host));
+        Console.WriteLine($"Response: {res.Context.SyncStage}. {res.HttpContext.Request.Host.Host}"));
 
-    webServerAgent.OnHttpGettingChanges(args 
-        => Console.WriteLine("Getting Client Changes" + args));
-    webServerAgent.OnHttpSendingChanges(args 
-        => Console.WriteLine("Sending Server Changes" + args));
+    webServerAgent.OnHttpGettingChanges(args =>
+        Console.WriteLine($"Getting client changes: {args}"));
 
-    await webServerManager.HandleRequestAsync(context);
+    webServerAgent.OnHttpSendingChanges(args =>
+        Console.WriteLine($"Sending server changes: {args}"));
+
+
+Sample output during a sync that downloads a large initial batch:
 
 .. code-block:: bash
 
+    Request: ScopeLoading. localhost
+    Response: Provisioning. localhost
+    Request: ChangesSelecting. localhost
+    Sending server changes: [localhost] Sending All Snapshot Changes. Rows:0
+    Response: ChangesSelecting. localhost
+    ...
 
-    Receiving Client Request:ScopeLoading. localhost.
-    Sending Client Response:Provisioning. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending All Snapshot Changes. Rows:0
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Getting Client Changes[localhost] Getting All Changes. Rows:0
-    Sending Server Changes[localhost] Sending Batch  Changes. (1/11). Rows:658
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending Batch  Changes. (2/11). Rows:321
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending Batch  Changes. (3/11). Rows:29
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending Batch  Changes. (4/11). Rows:33
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending Batch  Changes. (5/11). Rows:39
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending Batch  Changes. (6/11). Rows:55
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending Batch  Changes. (7/11). Rows:49
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending Batch  Changes. (8/11). Rows:32
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending Batch  Changes. (9/11). Rows:758
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending Batch  Changes. (10/11). Rows:298
-    Sending Client Response:ChangesSelecting. localhost
-    Receiving Client Request:ChangesSelecting. localhost.
-    Sending Server Changes[localhost] Sending Batch  Changes. (11/11). Rows:1242
-    Sending Client Response:ChangesSelecting. localhost
-    Synchronization done.
+The first two interceptors fire for every request; the last two fire only when payload is exchanged.
 
-
-The main differences are that the two first ones will intercept **ALL** requests coming from the client and the two last one will intercept **Only** requests where data are exchanged (but you have more detailed)
 
 WebRemoteOrchestrator
 -------------------------
 
-You have pretty much the same ``Http`` interceptors on the client side. ``OnHttpGettingRequest`` becomes ``OnHttpSendingRequest`` and ``OnHttpSendingResponse`` becomes ``OnHttpGettingResponse``:
+The matching client-side interceptors:
+
+* ``OnHttpSendingRequest``: about to send an HTTP request to the server.
+* ``OnHttpGettingResponse``: just received the HTTP response from the server.
+* ``OnHttpSendingChanges``: about to send a chunk of client changes.
+* ``OnHttpGettingChanges``: just received a chunk of server changes.
 
 .. code-block:: csharp
 
-    localOrchestrator.OnHttpGettingResponse(req => Console.WriteLine("Receiving Server Response"));
-    localOrchestrator.OnHttpSendingRequest(res =>Console.WriteLine("Sending Client Request."));
-    localOrchestrator.OnHttpGettingChanges(args => Console.WriteLine("Getting Server Changes" + args));
-    localOrchestrator.OnHttpSendingChanges(args => Console.WriteLine("Sending Client Changes" + args));
-
-
-.. code-block:: bash
-
-    Sending Client Request.
-    Receiving Server Response
-    Sending Client Request.
-    Receiving Server Response
-    Sending Client Changes[localhost] Sending All Changes. Rows:0
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (1/11). Rows:658
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (2/11). Rows:321
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (3/11). Rows:29
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (4/11). Rows:33
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (5/11). Rows:39
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (6/11). Rows:55
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (7/11). Rows:49
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (8/11). Rows:32
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (9/11). Rows:758
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (10/11). Rows:298
-    Sending Client Request.
-    Receiving Server Response
-    Getting Server Changes[localhost] Getting Batch Changes. (11/11). Rows:1242
-    Synchronization done.
-
-
-Example: Hook Bearer token
-------------------------------
-
-The idea is to inject the user identifier ``UserId`` in the ``SyncParameters`` collection on the server, after having extract this value from a ``Bearer`` token.
-
-That way the ``UserId`` is not hard coded or store somewhere on the client application, since this value is generated during the authentication part.
-
-As you can see:
-
-* My ``SyncController`` is marked with the `[Authorize]` attribute.
-* The orchestrator is only called when we know that the user is authenticated.
-* We are injecting the ``UserId`` value coming from the bearer into the ``SyncContext.Parameters``.
-* Optionally, because we don't want to send back this value to the client, we are removing it when sending the response.
-
-.. code-block:: csharp
-
-    [Authorize]
-    [ApiController]
-    [Route("api/[controller]")]
-    public class SyncController : ControllerBase
-    {
-        private WebServerAgent webServerAgent;
-
-        // Injected thanks to Dependency Injection
-        public SyncController(WebServerAgent webServerAgent) 
-            => this.webServerAgent = webServerAgent;
-
-        /// <summary>
-        /// This POST handler is mandatory to handle all the sync process
-        [HttpPost]
-        public async Task Post()
-        {
-            // If you are using the [Authorize] attribute you don't need to check
-            // the User.Identity.IsAuthenticated value
-            if (HttpContext.User.Identity.IsAuthenticated)
-            {
-                // OPTIONAL: -------------------------------------------
-                // OPTIONAL: Playing with user coming from bearer token
-                // OPTIONAL: -------------------------------------------
-
-                // on each request coming from the client, just inject the User Id parameter
-                webServerAgent.OnHttpGettingRequest(args =>
-                {
-                    var pUserId = args.Context.Parameters["UserId"];
-
-                    if (pUserId == null)
-                    {
-                        var userId = this.HttpContext.User.Claims.FirstOrDefault(
-                            x => x.Type == ClaimTypes.NameIdentifier);
-                        args.Context.Parameters.Add("UserId", userId);
-                    }
-
-                });
-
-                // Because we don't want to send back this value, remove it from the response 
-                webServerAgent.OnHttpSendingResponse(args =>
-                {
-                    if (args.Context.Parameters.Contains("UserId"))
-                        args.Context.Parameters.Remove("UserId");
-                });
-
-                await webServerAgent.HandleRequestAsync(this.HttpContext);
-            }
-            else
-            {
-                this.HttpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            }
-        }
-
-        /// <summary>
-        /// This GET handler is optional. It allows you to see the configuration hosted on the server
-        /// The configuration is shown only if Environmenent == Development
-        /// </summary>
-        [HttpGet]
-        [AllowAnonymous]
-        public Task Get() => this.HttpContext.WriteHelloAsync(webServerAgent);
-    }
-
-
-
-
+    webRemoteOrchestrator.OnHttpSendingRequest(req => Console.WriteLine("Sending client request."));
+    webRemoteOrchestrator.OnHttpGettingResponse(res => Console.WriteLine("Receiving server response"));
+    webRemoteOrchestrator.OnHttpSendingChanges(args => Console.WriteLine($"Sending client changes: {args}"));
+    webRemoteOrchestrator.OnHttpGettingChanges(args => Console.WriteLine($"Getting server changes: {args}"));

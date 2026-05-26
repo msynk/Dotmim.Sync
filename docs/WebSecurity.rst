@@ -4,11 +4,11 @@ ASP.NET Core Web Authentication
 Overview
 ^^^^^^^^^^
 
-The ``Dotmim.Sync.Web.Server`` package used to expose ``DMS`` through **ASP.Net Core Web Api** is *just* a wrapper using the web ``HttpContext`` object to figure out what should be done, internally.
+The ``Dotmim.Sync.Web.Server`` package wraps DMS into an ASP.NET Core Web API surface. From a security standpoint there is nothing special about it: securing the sync controller is exactly the same as securing any other Web API controller.
 
-.. hint:: You will find the auth sample here : `Web Authentication Sample <https://github.com/Mimetis/Dotmim.Sync/blob/master/Samples/HelloWebAuthSync>`_ 
+.. hint:: Sample: `Web Authentication sample <https://github.com/Mimetis/Dotmim.Sync/blob/master/Samples/HelloWebAuthSync>`_.
 
-Just as a reminder, the **Web Server** code looks like this:
+The base controller looks like:
 
 .. code-block:: csharp
 
@@ -16,27 +16,18 @@ Just as a reminder, the **Web Server** code looks like this:
     [Route("api/[controller]")]
     public class SyncController : ControllerBase
     {
-        private WebServerAgent webServerAgent;
+        private readonly WebServerAgent webServerAgent;
         private readonly IWebHostEnvironment env;
 
-        // Injected thanks to Dependency Injection
         public SyncController(WebServerAgent webServerAgent, IWebHostEnvironment env)
         {
             this.webServerAgent = webServerAgent;
             this.env = env;
         }
 
-        /// <summary>
-        /// This POST handler is mandatory to handle all the sync process
-        /// </summary>
-        /// <returns></returns>
         [HttpPost]
-        public Task Post() 
-            => webServerAgent.HandleRequestAsync(this.HttpContext);
+        public Task Post() => webServerAgent.HandleRequestAsync(this.HttpContext);
 
-        /// <summary>
-        /// This GET handler is optional. It allows you to see the configuration hosted on the server
-        /// </summary>
         [HttpGet]
         public async Task Get()
         {
@@ -46,157 +37,112 @@ Just as a reminder, the **Web Server** code looks like this:
             }
             else
             {
-                var stringBuilder = new StringBuilder();
-
-                stringBuilder.AppendLine("<!doctype html>");
-                stringBuilder.AppendLine("<html>");
-                stringBuilder.AppendLine("<title>Web Server properties</title>");
-                stringBuilder.AppendLine("<body>");
-                stringBuilder.AppendLine(" PRODUCTION MODE. HIDDEN INFO ");
-                stringBuilder.AppendLine("</body>");
-                await this.HttpContext.Response.WriteAsync(stringBuilder.ToString());
+                await this.HttpContext.Response.WriteAsync("PRODUCTION MODE. HIDDEN INFO");
             }
         }
-
     }
 
-As you can see, we are completely integrated within the **ASP.Net Core** architecture. So far, protecting our API is just like protecting any kind of ASP.NET Core Api.
+To protect this API, plug in any standard ASP.NET Core authentication scheme. Common choices:
 
+* OAuth2 / OpenID Connect via Microsoft Identity Web (Entra ID, B2C).
+* JWT bearer validation against your own identity provider.
+* AWS Cognito, Auth0, Okta, IdentityServer, etc.
 
-If you want to rely on a strong **OAUTH2** / **OpenID Connect** provider, please read:
+A few external resources:
 
-* Microsoft : `Mobile application calling a secure Web Api, using Azure AD <https://docs.microsoft.com/en-us/azure/active-directory/develop/scenario-mobile-overview>`_
-* AWS : `Securing a Web API using AWS Cognito <https://referbruv.com/blog/posts/securing-aspnet-core-apis-with-jwt-bearer-using-aws-cognito>`_
-* Google : `OAUTH2 with Google APIS <https://developers.google.com/api-client-library/dotnet/guide/aaa_oauth>`_
-* Identity Server : `Protecting an API using Identity Server <https://identityserver4.readthedocs.io/en/latest/topics/apis.html>`_
-
-``DMS`` relies on the ASP.NET Core Web Api architecture. So far, you can secure `DMS` like you're securing any kind of exposed Web API:
-
-* Configuring the controller 
-* Configuring the identity provider protocol
-* Calling the controller with an authenticated client, using a bearer token
-
-
-.. note:: More information about ASP.Net Core Authentication here : `Overview of ASP.NET Core authentication <https://docs.microsoft.com/en-us/aspnet/core/security/authentication>`_     
+* `Mobile application calling a secure Web API (Microsoft) <https://docs.microsoft.com/en-us/azure/active-directory/develop/scenario-mobile-overview>`_
+* `Securing an ASP.NET Core API with AWS Cognito <https://referbruv.com/blog/posts/securing-aspnet-core-apis-with-jwt-bearer-using-aws-cognito>`_
+* `Identity Server: protecting an API <https://duendesoftware.com/products/identityserver>`_
+* `ASP.NET Core authentication <https://docs.microsoft.com/en-us/aspnet/core/security/authentication>`_
 
 
 Server side
 ^^^^^^^^^^^^^^
 
-We are going to use a **Bearer token** validation on the server side:
+The example below uses **JWT bearer** validation. For production, plug in the JWT validation parameters of your real identity provider (Microsoft Identity Web, AWS Cognito, etc.) instead of hard-coding a key.
 
-* **Unsecure** but easier: Using an hard coded bearer token (Do not use this technic in production)
-* **Secured** but relying on an external token provider: Using for example `Azure Active Directory Authentication <https://docs.microsoft.com/en-us/aspnet/core/security/authentication/azure-active-directory/>`_.
+.. warning:: The hard-coded key snippet below is for illustration only. **Do not** ship a hard-coded signing key in production.
 
-
-Configuration
------------------------------
-
-You need to configure your Web API project to be able to secure any controller.
-
-| In your ``Startup.cs``, you should add authentication services, with JWT Bearer protection.
-| It involves using ``services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>{})``
-
-Here is a quick sample, **without** relying on any external cloud identity provider (once again, **DON'T** do that in production, it's **INSECURE** and just here for the sake of explanation)
+Configure ASP.NET Core authentication and DMS together:
 
 .. code-block:: csharp
 
-    public void ConfigureServices(IServiceCollection services)
-    {
-        services.AddControllers();
+    var builder = WebApplication.CreateBuilder(args);
 
-        services.AddDistributedMemoryCache();
-        services.AddSession(options => options.IdleTimeout = TimeSpan.FromMinutes(30));
+    builder.Services.AddControllers();
 
-        // Adding a default authentication system
-        JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear(); // => remove default claims
+    builder.Services.AddDistributedMemoryCache();
+    builder.Services.AddSession(options => options.IdleTimeout = TimeSpan.FromMinutes(30));
 
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-                .AddJwtBearer(options =>
-                {
-                    ValidIssuer = "Dotmim.Sync.Bearer",
-                    ValidAudience = "Dotmim.Sync.Bearer",
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("RANDOM_KEY"))
-                });
+    JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear(); // keep raw claim types
 
-        // [Required]: Get a connection string to your server data source
-        var connectionString = Configuration.GetSection("ConnectionStrings")["SqlConnection"];
-
-        // [Required] Tables involved in the sync process:
-        var tables = new string[] {"ProductCategory", "ProductModel", "Product",
-            "Address", "Customer", "CustomerAddress", "SalesOrderHeader", "SalesOrderDetail" };
-
-        // [Required]: Add a SqlSyncProvider acting as the server hub.
-        services.AddSyncServer<SqlSyncProvider>(connectionString, tables);
-    }
-
-
-As an example, if you're using **Azure AD** authentication, your code should be more like:
-
-.. code-block:: csharp
-
-
-    public void ConfigureServices(IServiceCollection services)
-    {
-        services.AddControllers();
-
-        // [Required]: Handling multiple sessions
-        services.AddDistributedMemoryCache();
-        services.AddSession(options => options.IdleTimeout = TimeSpan.FromMinutes(30));
-
-        // Using Azure AD Authentication
-        services.AddMicrosoftIdentityWebApiAuthentication(Configuration)
-                .EnableTokenAcquisitionToCallDownstreamApi()
-                .AddInMemoryTokenCaches();
-
-        // [Required]: Get a connection string to your server data source
-        var connectionString = Configuration.GetSection("ConnectionStrings")["SqlConnection"];
-
-        // [Required] Tables involved in the sync process:
-        var tables = new string[] {"ProductCategory", "ProductModel", "Product",
-            "Address", "Customer", "CustomerAddress", "SalesOrderHeader", "SalesOrderDetail" };
-
-        // [Required]: Add a SqlSyncProvider acting as the server hub.
-        services.AddSyncServer<SqlSyncProvider>(connectionString, tables);
-    }
-
-.. note:: More on Code Configuration `Here <https://docs.microsoft.com/en-us/azure/active-directory/develop/scenario-protected-web-api-app-configuration>`_.
-
-
-Finally, do not forget to add the **Authentication Middlewares** (and Session Middleware) as well:
-
-.. code-block:: csharp
-
-
-    // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-    {
-        if (env.IsDevelopment())
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
         {
-            app.UseDeveloperExceptionPage();
-        }
-
-        app.UseHttpsRedirection();
-
-        app.UseRouting();
-
-        app.UseAuthentication();
-        app.UseAuthorization();
-        app.UseSession();
-
-        app.UseEndpoints(endpoints =>
-        {
-            endpoints.MapControllers();
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidIssuer = "Dotmim.Sync.Bearer",
+                ValidAudience = "Dotmim.Sync.Bearer",
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes("RANDOM_KEY_FROM_CONFIG_OR_KEYVAULT")),
+            };
         });
-    }
+
+    builder.Services.AddAuthorization();
+
+    var connectionString = builder.Configuration.GetConnectionString("SqlConnection");
+
+    var setup = new SyncSetup("ProductCategory", "ProductModel", "Product",
+        "Address", "Customer", "CustomerAddress", "SalesOrderHeader", "SalesOrderDetail");
+
+    builder.Services.AddSyncServer(new SqlSyncProvider(connectionString), setup);
+
+    var app = builder.Build();
+    app.UseHttpsRedirection();
+    app.UseRouting();
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.UseSession();
+    app.MapControllers();
+    app.Run();
+
+
+Using **Microsoft Identity Web** (Entra ID / B2C):
+
+.. code-block:: csharp
+
+    var builder = WebApplication.CreateBuilder(args);
+
+    builder.Services.AddControllers();
+    builder.Services.AddDistributedMemoryCache();
+    builder.Services.AddSession(options => options.IdleTimeout = TimeSpan.FromMinutes(30));
+
+    builder.Services.AddMicrosoftIdentityWebApiAuthentication(builder.Configuration)
+        .EnableTokenAcquisitionToCallDownstreamApi()
+        .AddInMemoryTokenCaches();
+
+    builder.Services.AddAuthorization();
+
+    var connectionString = builder.Configuration.GetConnectionString("SqlConnection");
+    var setup = new SyncSetup(/* ... */);
+    builder.Services.AddSyncServer(new SqlSyncProvider(connectionString), setup);
+
+    var app = builder.Build();
+    app.UseHttpsRedirection();
+    app.UseRouting();
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.UseSession();
+    app.MapControllers();
+    app.Run();
+
+.. note:: More on configuring a Microsoft Identity Web protected API: `Configuration <https://docs.microsoft.com/en-us/azure/active-directory/develop/scenario-protected-web-api-app-configuration>`_.
 
 
 Securing the controller
 -----------------------------
 
-This part is the most easier one. Yo can choose to secure all the controller, using the ``[Authorize]`` attribute on the class itself, or you can use either ``[Authorize]`` / ``[AllowAnonymous]`` on each controller methods:
-
-The simplest controller could be written like this, using the ``[Authorize]`` attribute:
+You can require authentication on the whole controller or per-method:
 
 .. code-block:: csharp
 
@@ -205,98 +151,91 @@ The simplest controller could be written like this, using the ``[Authorize]`` at
     [Route("api/[controller]")]
     public class SyncController : ControllerBase
     {
-        ...
+        // ...
     }
 
 
-Maybe you'll need to expose the ``GET`` method to see the server configuration. In that particular case, we can use both ``[Authorize]`` and ``[AllowAnonymous]``:
+Or mix ``[Authorize]`` with ``[AllowAnonymous]`` for the GET handler:
 
 .. code-block:: csharp
- 
+
     [ApiController]
     [Route("api/[controller]")]
     public class SyncController : ControllerBase
     {
-        private WebServerAgent webServerAgent;
+        private readonly WebServerAgent webServerAgent;
 
-        public SyncController(WebServerAgent webServerAgent) 
+        public SyncController(WebServerAgent webServerAgent)
             => this.webServerAgent = webServerAgent;
 
         [HttpPost]
         [Authorize]
-        public async Task Post() => webServerAgent.HandleRequestAsync(this.HttpContext);
+        public Task Post() => webServerAgent.HandleRequestAsync(this.HttpContext);
 
         [HttpGet]
         [AllowAnonymous]
         public Task Get() => this.HttpContext.WriteHelloAsync(webServerAgent);
-
     }
 
 
-And eventually, you can even have more control, using the ``HttpContext`` instance, from within your ``POST`` handler:
+Or check claims explicitly inside the action:
 
 .. code-block:: csharp
 
     [HttpPost]
     public async Task Post()
     {
-        // If you are using the [Authorize] attribute you don't need to check
-        // the User.Identity.IsAuthenticated value
         if (!HttpContext.User.Identity.IsAuthenticated)
         {
             this.HttpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
-        
-        // using scope and even claims, you can have more grain control on your authenticated user
-        string scope = (User.FindFirst("http://schemas.microsoft.com/identity/claims/scope"))?.Value;
-        string user = (User.FindFirst(ClaimTypes.NameIdentifier))?.Value;
+
+        var scope = User.FindFirst("http://schemas.microsoft.com/identity/claims/scope")?.Value;
+        var user = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
         if (scope != "access_as_user")
         {
             this.HttpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
-        
-        await orchestrator.HandleRequestAsync(this.HttpContext);
+
+        await webServerAgent.HandleRequestAsync(this.HttpContext);
     }
+
 
 Client side
 ^^^^^^^^^^^^^^^
 
-From you mobile / console / desktop application, you just need to send your **Bearer Token** embedded into your `HttpClient` headers.
-
-The ``WebRemoteOrchestrator`` object allows you to use your own ``HttpClient`` instance. So far, create an instance and add your bearer token to the ``DefaultRequestHeaders.Authorization`` property.
+Pass an authenticated ``HttpClient`` to the ``WebRemoteOrchestrator``. The orchestrator accepts an ``HttpClient`` parameter; whatever default ``DefaultRequestHeaders`` you set will travel with every sync request.
 
 .. code-block:: csharp
 
-    // Getting a JWT token
-    // You should get a Jwt Token from an identity provider like Azure, Google, AWS or other.
-    var token = GenerateJwtToken(...);
+    // Get a JWT from your identity provider.
+    var token = await GetTokenAsync(/* ... */);
 
-    HttpClient httpClient = new HttpClient();
-    httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+    var httpClient = new HttpClient();
+    httpClient.DefaultRequestHeaders.Authorization =
+        new AuthenticationHeaderValue("Bearer", token);
 
-    // Adding the HttpClient instance to the web client orchestrator
     var serverOrchestrator = new WebRemoteOrchestrator(
-                    "https://localhost:44342/api/sync", client:httpClient);
+        "https://localhost:44342/api/sync",
+        client: httpClient);
 
     var clientProvider = new SqlSyncProvider(clientConnectionString);
     var agent = new SyncAgent(clientProvider, serverOrchestrator);
 
     var result = await agent.SynchronizeAsync();
 
-Xamaring sample
-------------------------
 
-.. note:: More on mobile token acquisition : `Acquire token from mobile application <https://docs.microsoft.com/en-us/azure/active-directory/develop/scenario-mobile-acquire-token>`_
+MSAL token acquisition (mobile / desktop)
+--------------------------------------------
 
-| MSAL allows apps to acquire tokens silently and interactively. 
-| When you call ``AcquireTokenSilent()`` or ``AcquireTokenInteractive()``, MSAL returns an access token for the requested scopes. 
-| The correct pattern is to make a silent request and then fall back to an interactive request.
+For native clients, MSAL takes care of acquiring and refreshing tokens silently:
 
 .. code-block:: csharp
 
-    string[] scopes = new string[] {"user.read"};
+    string[] scopes = { "user.read" };
     var app = PublicClientApplicationBuilder.Create(clientId).Build();
     var accounts = await app.GetAccountsAsync();
 
@@ -304,11 +243,14 @@ Xamaring sample
     try
     {
         result = await app.AcquireTokenSilent(scopes, accounts.FirstOrDefault())
-                    .ExecuteAsync();
+                          .ExecuteAsync();
     }
-    catch(MsalUiRequiredException)
+    catch (MsalUiRequiredException)
     {
-        result = await app.AcquireTokenInteractive(scopes)
-                    .ExecuteAsync();
+        result = await app.AcquireTokenInteractive(scopes).ExecuteAsync();
     }
 
+    httpClient.DefaultRequestHeaders.Authorization =
+        new AuthenticationHeaderValue("Bearer", result.AccessToken);
+
+.. note:: More on mobile token acquisition: `Acquire token from a mobile application <https://docs.microsoft.com/en-us/azure/active-directory/develop/scenario-mobile-acquire-token>`_.

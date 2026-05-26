@@ -1,63 +1,75 @@
 Increasing timeout
 ======================
 
-If you're not working on **TCP** but more likely on **HTTP** using a web api to expose your sync process, you will probably have to face some issues with timeout.  
+In TCP scenarios, sync timeouts are mostly a database concern. In HTTP scenarios, you'll meet a few additional moving parts.
 
-.. note:: Before increasing timeout, be sure you have already setup a `snapshot <Snapshot.html>`_ for all your new clients.
+.. note:: Before increasing timeouts for a slow first sync, set up a `snapshot <Snapshot.html>`_ instead. Snapshots are usually the right answer for big initial payloads.
 
-By default, ``Timeout`` is fixed to 2 minutes.
+There are three places to look at:
 
-To increase the overall timeout, you will have to work on both side: 
+* The ``HttpClient`` timeout on the client.
+* The kestrel / hosting timeouts on the server (only when the request is actually slow at the application level).
+* The database command timeout on both sides via ``SyncOptions.DbCommandTimeout``.
 
-* Your web server api project.
-* Your client application.
-
-Server side
-^^^^^^^^^^^^^^^^
-
-There is no way to increase the ``Timeout`` period on your web api using code, with **.Net Core**.
-
-The only solution is to provide a ``web.config``, that you add manually to your project. 
-
-.. note:: More information here : `increase-the-timeout-of-asp-net-core-application <https://medium.com/aspnetcore/increase-the-timeout-of-asp-net-core-application-9a7b4f6deebf>`_ 
-
-Here is a ``web.config`` example where ``requestTimeout`` is fixed to **20** minutes:
-
-.. code-block:: xml
-
-  <?xml version="1.0" encoding="utf-8"?>
-  <configuration>
-    <system.webServer>
-      <handlers>
-        <add name="aspNetCore" path="*" verb="*" 
-             modules="AspNetCoreModule" resourceType="Unspecified"/>
-      </handlers>
-      <aspNetCore requestTimeout="00:20:00"  processPath="%LAUNCHER_PATH%" 
-                  arguments="%LAUNCHER_ARGS%" stdoutLogEnabled="false" 
-                  stdoutLogFile=".\logs\stdout" forwardWindowsAuthToken="false"/>
-    </system.webServer>
-  </configuration>
 
 Client side
 ^^^^^^^^^^^^^^^^
 
-On the client side, the web orchestrator ``WebRemoteOrchestrator`` instance uses its own ``HttpClient`` instance unless you specify your own ``HttpClient`` instance.
+``WebRemoteOrchestrator`` either uses an ``HttpClient`` you supply or creates one with framework defaults (which is ``100`` seconds in modern .NET).
 
-So far, to increase the timeout, you can either:
-
-* Provide your own ``HttpClient`` instance with the ``Timeout`` property correctly set:
+To increase it, pass your own ``HttpClient`` with a longer ``Timeout``:
 
 .. code-block:: csharp
 
-  var handler = new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip };
-  var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(20) };
-  var clientProvider = new WebRemoteOrchestrator("http://my.syncapi.com:88/Sync", null, null, client);
+    var handler = new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip };
+    using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(20) };
 
+    var clientProvider = new WebRemoteOrchestrator(
+        "https://my.syncapi.com:88/Sync",
+        client: client);
 
-* Increase the existing ``HttpClient`` instance, created by ``WebRemoteOrchestrator``:
+Or set ``Timeout`` after the orchestrator constructor:
 
 .. code-block:: csharp
 
-  var clientProvider = new WebRemoteOrchestrator("http://my.syncapi.com:88/Sync");
-  clientProvider.HttpClient.Timeout = TimeSpan.FromMinutes(20);
+    var clientProvider = new WebRemoteOrchestrator("https://my.syncapi.com:88/Sync");
+    clientProvider.HttpClient.Timeout = TimeSpan.FromMinutes(20);
 
+
+Server side
+^^^^^^^^^^^^^^^^
+
+In ASP.NET Core (Kestrel) request timeouts are mostly handled by the request lifecycle and have no direct equivalent of the legacy ``requestTimeout`` from ``web.config``. The most useful tuning knobs are:
+
+* ``KestrelServerOptions.Limits.KeepAliveTimeout`` and ``RequestHeadersTimeout``.
+* IIS / reverse proxy in-flight timeouts (out-of-process IIS hosting still respects ``aspNetCore`` ``requestTimeout`` if you use ``web.config`` with the ASP.NET Core Module).
+* When hosted behind nginx, Cloudflare, Azure Front Door, or other proxies: each layer has its own timeout you may need to bump.
+
+For long-running sync requests in particular, the recommended approach is **batching**: tune ``SyncOptions.BatchSize`` so each request finishes well within whatever proxy timeouts are in front of you. With reasonable batches (the default is approximately 2 MB per file), individual HTTP calls stay short even for a multi-GB sync.
+
+If you are still hitting database-level timeouts during apply or select, increase ``SyncOptions.DbCommandTimeout`` (in seconds) on the side that throws:
+
+.. code-block:: csharp
+
+    var options = new SyncOptions
+    {
+        DbCommandTimeout = 600, // 10 minutes
+    };
+
+If you specifically host out-of-process behind IIS and want a higher request timeout, the ``aspNetCore`` element in ``web.config`` is still honored:
+
+.. code-block:: xml
+
+    <?xml version="1.0" encoding="utf-8"?>
+    <configuration>
+      <system.webServer>
+        <aspNetCore requestTimeout="00:20:00"
+                    processPath="dotnet"
+                    arguments=".\YourApi.dll"
+                    stdoutLogEnabled="false"
+                    stdoutLogFile=".\logs\stdout"
+                    hostingModel="OutOfProcess" />
+      </system.webServer>
+    </configuration>
+
+.. note:: For in-process hosting (the default since .NET Core 3.0) the ``requestTimeout`` value is ignored. Long requests in that case are governed by the ASP.NET Core Module / IIS-level timeouts and your reverse proxy configuration.

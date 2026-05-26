@@ -1,64 +1,70 @@
-Tables & Rows already existing
+Tables & rows already existing
 ==================================
 
-How to handle existing **clients** databases, with **existing** rows...
+What happens when the client database already contains rows before the first sync?
+
 
 Default behavior
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Before going further let's see the default behavior of ``DMS``, regarding this particular scenario where you have existing rows in your client databases:
+DMS does not track pre-existing client rows on the first sync. They stay on the client and are not uploaded to the server. Server rows are still downloaded and merged with whatever was already there.
 
-Basically, ``DMS`` will not take care of any existing client rows. 
-On the first sync, these rows will stay on the client and will not be uploaded to the server (On the other part, of course the server rows will be downloaded to the client)
+This is intentional: it lets you ship a client database seeded with a known data set (a backup snapshot of the server, for example) without DMS treating those rows as "client changes" and re-uploading them.
 
-(Obviously, after this first sync, if you are updating locally any of these existing rows, they will be handled on the next sync)
+After the first sync, any local update / insert / delete is tracked normally and flows up on subsequent syncs.
 
-The reason behind this behavior is to fit the scenario where you want to use a client database with some pre-existing rows (for example a server backup downloaded to the client ?) and where you don't wan't to upload them to the server (because they are already existing on the server)
+If your scenario actually wants those untracked rows to be uploaded, use ``UpdateUntrackedRowsAsync``.
 
-Now, we can have a second scenario where you actually want to upload these pre-existing rows.
-
-For this scenario, you have a special method, available on the ``LocalOrchestrator`` only, called ``UpdateUntrackedRowsAsync`` that will mark all non tracked rows for the next sync.
 
 UpdateUntrackedRowsAsync
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. note:: You will find a complete sample here : `Already Existing rows <https://github.com/Mimetis/Dotmim.Sync/tree/master/Samples/AlreadyExistingDatabases>`_ 
+.. note:: Sample: `Already existing rows <https://github.com/Mimetis/Dotmim.Sync/tree/master/Samples/AlreadyExistingDatabases>`_.
 
+Make sure the client and server tables share the same schema before going further.
 
-Assuming you have a client database with some pre-existing rows and before going further, be sure that your server and client table has the same schema.
+Workflow:
 
-The workflow to handle these lines is:
+* Run a first sync. This creates all the sync metadata locally (tracking tables, triggers, stored procedures) and downloads server rows.
+* Call ``UpdateUntrackedRowsAsync`` to mark every untracked client row as "pending upload".
+* Run a second sync. The previously-untracked rows are uploaded to the server.
 
-* Make a first sync, to be sure we have all the required metadata locally (tracking tables, triggers, stored proc ...)
-    * During this first sync, you will download the server rows as well.
-* Call the ``UpdateUntrackedRowsAsync`` method to mark all non tracked client rows.
-* Make a second sync to upload these rows to server.
-
-Here is a small sample, following this workflow:
+The signatures available on ``LocalOrchestrator`` are:
 
 .. code-block:: csharp
 
-    // Tables involved in the sync process:
+    public Task<long> UpdateUntrackedRowsAsync(
+        DbConnection connection = null, DbTransaction transaction = null,
+        IProgress<ProgressArgs> progress = null,
+        CancellationToken cancellationToken = default);
+
+    public Task<long> UpdateUntrackedRowsAsync(
+        string scopeName,
+        DbConnection connection = null, DbTransaction transaction = null,
+        IProgress<ProgressArgs> progress = null,
+        CancellationToken cancellationToken = default);
+
+The method returns the number of rows that were marked as pending upload.
+
+A complete example:
+
+.. code-block:: csharp
+
     var setup = new SyncSetup("ServiceTickets");
 
-    // Creating an agent that will handle all the process
     var agent = new SyncAgent(clientProvider, serverProvider);
 
-    // Launch the sync process
-    // This first sync will create all the sync architecture
-    // and will get the server rows
+    // First sync. Creates the sync metadata and downloads server rows.
+    // Pre-existing local rows are NOT uploaded yet.
     var s1 = await agent.SynchronizeAsync(setup);
-
-    // This first sync did not upload the client rows.
-    // We only have rows from server that have been downloaded
-    // The important step here, done by 1st Sync,
-    // is to have setup everything locally (triggers / tracking tables ...)
     Console.WriteLine(s1);
 
-    // Now we can "mark" original clients rows as "to be uploaded"
-    await agent.LocalOrchestrator.UpdateUntrackedRowsAsync();
+    // Mark every untracked client row as "to be uploaded".
+    var taggedCount = await agent.LocalOrchestrator.UpdateUntrackedRowsAsync();
+    Console.WriteLine($"{taggedCount} client rows marked for upload.");
 
-    // Then we can make a new synchronize to upload these rows to server
-    // Launch the sync process
+    // Second sync. The previously-untracked rows are now uploaded to the server.
     var s2 = await agent.SynchronizeAsync();
     Console.WriteLine(s2);
+
+.. note:: ``UpdateUntrackedRowsAsync`` is only available on ``LocalOrchestrator``. The matching server-side scenario (preloaded server data) is handled differently because the server creates its tracking tables empty and inserts triggers fire normally for any subsequent server-side change.

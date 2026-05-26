@@ -5,61 +5,54 @@ Overview
     :align: center
 
 
-| **Dotmim.Sync** (**DMS**) is the easiest way to handle a full **synchronization** between one server database and multiples clients databases.  
-| **Dotmim.Sync** is cross-platforms, multi-databases and based on **.Net Standard 2.0**.   
-| Choose either **SQL Server**, **SQLite**, **MySQL**, **MariaDB** and (hopefully, I hope soon...) Oracle or PostgreSQL !
+| **Dotmim.Sync** (**DMS**) is the easiest way to handle a full **synchronization** between one server database and multiple client databases.
+| The current release (**1.3.16**) targets **.NET 10** and runs on any host the modern .NET runtime supports.
 
-For simplicity, we can say **DMS** framework.
+Choose **SQL Server** (with optional **Change Tracking** support), **PostgreSQL**, **MySQL**, **MariaDB**, or **SQLite** for your provider.
 
-| No need to handle any configuration file, or code generation code or whatever. 
-| Just a few lines of code, with the list of tables you want to synchronize then call ``SynchronizeAsync()`` and you're done !
+For simplicity, we use the abbreviation **DMS** to refer to the framework.
+
+| No configuration files, no code generation, no scaffolding step.
+| A few lines of code, the list of tables you want to synchronize, a call to ``SynchronizeAsync()`` and you're done.
 
 Nuget packages
 ^^^^^^^^^^^^^^^
 
-Basically, **DMS** is working with *sync database providers*, that are available through nuget, from the **Visual Studio** interface:  
-
-.. image:: assets/Packages.png
-    :align: center
-    :alt: packages
-
-
-Obviously, you can add them through your command line, assuming you are developing with **Visual Studio Code**, **Rider** or even **Notepad** :)
-
+**DMS** ships as a set of *sync database providers*, available on `nuget.org <https://www.nuget.org/packages?q=Dotmim.Sync>`_:
 
 .. code-block:: bash
 
-    # Adding the package required to synchronize a SQL Server database:
+    # SQL Server (relies on triggers and tracking tables):
     dotnet add package Dotmim.Sync.SqlServer
-    # Adding the package required to synchronize a SQL Server database, using Change Tracking feature:
+    # SQL Server using the native Change Tracking feature:
     dotnet add package Dotmim.Sync.SqlServer.ChangeTracking
-    # Adding the package required to synchronize a MySQL database:
+    # PostgreSQL:
+    dotnet add package Dotmim.Sync.PostgreSql
+    # MySQL:
     dotnet add package Dotmim.Sync.MySql
-    # Adding the package required to synchronize a MariaDB database:
+    # MariaDB:
     dotnet add package Dotmim.Sync.MariaDB
-    # Adding the package required to synchronize a SQLite database:
+    # SQLite (client side only):
     dotnet add package Dotmim.Sync.Sqlite
 
 
-For instance, if you need to synchronize two **MySql** databases, the only package you need to install, on both Server and Client side, is ``Dotmim.Sync.MySql``.
+On a single-database scenario you only need one provider package on each side. For instance, syncing two **MySQL** databases requires only ``Dotmim.Sync.MySql`` on both server and client.
 
-On the other side, if you need to synchronize a SQL server database, with multiple SQLite client databases, install ``Dotmim.Sync.SqlServer`` (or ``Dotmim.Sync.SqlServer.ChangeTracking``) on the server side and then install ``Dotmim.Sync.Sqlite`` on each client.
+For a SQL Server hub with SQLite clients, install ``Dotmim.Sync.SqlServer`` (or ``Dotmim.Sync.SqlServer.ChangeTracking``) on the server and ``Dotmim.Sync.Sqlite`` on each client.
 
-.. note:: The package ``Dotmim.Sync.Core`` is the core framework, and is used by all the providers. You don't have to explicitely add it to your projects, since it's always part of the provider you've just installed.
+.. note:: ``Dotmim.Sync.Core`` is a transitive dependency of every provider. You don't need to add it explicitly.
 
-The last two packages available, ``Dotmim.Sync.Web.Client`` and ``Dotmim.Sync.Web.Server`` are used for a specific scenario, where you server database is not accessible directly, but instead is available and exposed through a **Web Api**, built with **ASP.Net Core** or **ASP.NET**.
+For HTTP scenarios, where the server database is exposed by an ASP.NET Core Web API rather than reached over TCP, add ``Dotmim.Sync.Web.Server`` on the API project and ``Dotmim.Sync.Web.Client`` on each client.
 
-All packages are available through **nuget.org**:
-
-| **Dotmim.Sync.Core** : `<https://www.nuget.org/packages/Dotmim.Sync.Core>`_ 
-| **Dotmim.Sync.SqlServer** : `<https://www.nuget.org/packages/Dotmim.Sync.SqlServer>`_ 
-| **Dotmim.Sync.SqlSyncChangeTrackingProvider** : `<https://www.nuget.org/packages/Dotmim.Sync.SqlServer.ChangeTracking>`_ 
-| **Dotmim.Sync.Sqlite** : `<https://www.nuget.org/packages/Dotmim.Sync.Sqlite>`_ 
-| **Dotmim.Sync.MySql** : `<https://www.nuget.org/packages/Dotmim.Sync.MySql>`_ 
-| **Dotmim.Sync.MariaDB** : `<https://www.nuget.org/packages/Dotmim.Sync.MariaDB>`_ 
-| **Dotmim.Sync.Web.Server** : `<https://www.nuget.org/packages/Dotmim.Sync.Web.Server>`_ 
-| **Dotmim.Sync.Web.Client** : `<ttps://www.nuget.org/packages/Dotmim.Sync.Web.Client>`_ 
-
+| **Dotmim.Sync.Core** : `<https://www.nuget.org/packages/Dotmim.Sync.Core>`_
+| **Dotmim.Sync.SqlServer** : `<https://www.nuget.org/packages/Dotmim.Sync.SqlServer>`_
+| **Dotmim.Sync.SqlServer.ChangeTracking** : `<https://www.nuget.org/packages/Dotmim.Sync.SqlServer.ChangeTracking>`_
+| **Dotmim.Sync.PostgreSql** : `<https://www.nuget.org/packages/Dotmim.Sync.PostgreSql>`_
+| **Dotmim.Sync.MySql** : `<https://www.nuget.org/packages/Dotmim.Sync.MySql>`_
+| **Dotmim.Sync.MariaDB** : `<https://www.nuget.org/packages/Dotmim.Sync.MariaDB>`_
+| **Dotmim.Sync.Sqlite** : `<https://www.nuget.org/packages/Dotmim.Sync.Sqlite>`_
+| **Dotmim.Sync.Web.Server** : `<https://www.nuget.org/packages/Dotmim.Sync.Web.Server>`_
+| **Dotmim.Sync.Web.Client** : `<https://www.nuget.org/packages/Dotmim.Sync.Web.Client>`_
 
 
 Tutorial: First sync
@@ -68,58 +61,53 @@ Tutorial: First sync
 First sync
 ----------------------
 
-This tutorial will describe all the steps required to create a first sync between two relational databases:
+This tutorial walks through the steps required to create a first sync between two relational databases.
 
-* If you don't have any databases ready for testing, you can use:
+* If you don't have a database ready for testing, you can use the lightweight AdventureWorks scripts in the repository:
 
-  * For **SQL Server** : `AdventureWorks for SQL Server <https://github.com/Mimetis/Dotmim.Sync/blob/master/CreateAdventureWorks.sql>`_    
-  * For **MySQL** : `AdventureWorks for MySQL <https://github.com/Mimetis/Dotmim.Sync/blob/master/CreateMySqlAdventureWorks.sql>`_ 
+  * For **SQL Server** : `AdventureWorks for SQL Server <https://github.com/Mimetis/Dotmim.Sync/blob/master/CreateAdventureWorks.sql>`_
+  * For **MySQL** : `AdventureWorks for MySQL <https://github.com/Mimetis/Dotmim.Sync/blob/master/CreateMySqlAdventureWorks.sql>`_
 
-* The script is ready to execute in SQL Server (or MySQL Workbench). It contains :
+* The script seeds two databases:
 
-  * A lightweight AdvenureWorks database, acting as the Server database (called AdventureWorks)
-  * An empty database, acting as the Client database (called Client)
+  * A lightweight AdventureWorks database, acting as the server (called ``AdventureWorks``).
+  * An empty database, acting as the client (called ``Client``).
 
-.. hint:: You will find this sample here : `HelloSync sample <https://github.com/Mimetis/Dotmim.Sync/blob/master/Samples/HelloSync>`_ 
-         
-          You can see this sample as well, live, hosted on `dotnetfiddle <https://dotnetfiddle.net>`_  : `Hello Sync On dotnetfiddle <https://dotnetfiddle.net/CZgNDm>`_ 
+.. hint:: You will find this sample here: `HelloSync sample <https://github.com/Mimetis/Dotmim.Sync/blob/master/Samples/HelloSync>`_
 
-.. warning:: In the code sample below, we are using a special provider called ``SqlSyncChangeTrackingProvider``. This provider is using the **CHANGE_TRACKING** feature from **SQL SERVER**. 
+.. warning:: The code below uses ``SqlSyncChangeTrackingProvider``, which relies on **CHANGE_TRACKING** in SQL Server.
 
-   Before running this code, use this SQL statement on your server database to enable the *Change Tracking*: 
-   
+   Enable Change Tracking on your server database first:
+
    .. code-block:: sql
-   
-        ALTER DATABASE AdventureWorks SET CHANGE_TRACKING=ON 
-        (CHANGE_RETENTION=2 DAYS,AUTO_CLEANUP=ON)
-     
-   Otherwise, if you don't want to use the *Change Tracking* feature, just change ``SqlSyncChangeTrackingProvider`` to ``SqlSyncProvider``
+
+        ALTER DATABASE AdventureWorks SET CHANGE_TRACKING = ON
+            (CHANGE_RETENTION = 2 DAYS, AUTO_CLEANUP = ON);
+
+   If you don't want to use Change Tracking, switch to ``SqlSyncProvider`` (triggers and tracking tables will be provisioned instead).
 
 
 .. code-block:: csharp
 
-    // First provider on the server side, is using the Sql change tracking feature.
+    // Server provider relying on Change Tracking.
     var serverProvider = new SqlSyncChangeTrackingProvider(serverConnectionString);
 
-    // IF you want to try with a MySql Database, use the [MySqlSyncProvider] instead
+    // For MySQL, you would use:
     // var serverProvider = new MySqlSyncProvider(serverConnectionString);
 
-    // Second provider on the client side, is the [SqliteSyncProvider] used for SQLite databases 
-    // relying on triggers and tracking tables to create the sync environment
+    // Client provider relying on triggers and tracking tables.
     var clientProvider = new SqliteSyncProvider(clientConnectionString);
 
     // Tables involved in the sync process:
     var setup = new SyncSetup("ProductCategory", "ProductModel", "Product",
-        "Address", "Customer", "CustomerAddress", "SalesOrderHeader", "SalesOrderDetail" );
+        "Address", "Customer", "CustomerAddress", "SalesOrderHeader", "SalesOrderDetail");
 
-    // Creating an agent that will handle all the process
+    // Sync agent.
     var agent = new SyncAgent(clientProvider, serverProvider);
 
     do
     {
-        // Launch the sync process
         var s1 = await agent.SynchronizeAsync(setup);
-        // Write results
         Console.WriteLine(s1);
 
     } while (Console.ReadKey().Key != ConsoleKey.Escape);
@@ -132,54 +120,36 @@ And here is the result you should have, after a few seconds:
 .. code-block:: bash
 
     Synchronization done.
-            Total changes  uploaded: 0
-            Total changes  downloaded: 3514
-            Total changes  applied on client: 3514
-            Total changes  applied on server: 0
-            Total changes  failed to apply on client: 0
-            Total changes  failed to apply on server: 0
-            Total resolved conflicts: 0
-            Total duration :00.00:02.125
-
-It took **2 seconds** on my machine to make a full synchronization between the **Server** and the **Client**.  
+        Total changes  uploaded: 0
+        Total changes  downloaded: 3514
+        Total changes  applied on client: 3514
+        Total changes  applied on server: 0
+        Total changes  failed to apply on client: 0
+        Total changes  failed to apply on server: 0
+        Total resolved conflicts: 0
+        Total duration :00.00:02.125
 
 
 Second sync
 ----------------------
 
-This first sample took **2 seconds** to make a *full* sync between a **Server** and a **Client**.
+The first sync may take a few seconds because, on the **first sync only**, ``Dotmim.Sync`` has to:
 
-It's a little bit long (I'm kidding... no), because, under the hood, the ``Dotmim.Sync`` framework, on the **first sync only**, will have to:
+* Get the schema from the server.
+* Create the missing tables on the client (you don't need an existing client schema).
+* Provision tracking tables, stored procedures, and triggers on both sides (skipped on SQL Server with Change Tracking).
+* Stream the initial data from the server to the client.
 
-* Get the schema from the **Server** side and create all the tables on the **Client** side, if needed. (yes, you don't need a client database with an existing schema)
-* Create on both side all the required stuff to be able to manage a full sync process, creating *tracking* tables, stored procedures, triggers and so on ... be careful, ``Dotmim.Sync`` could be a little bit intrusive if you're not using the ``SqlSyncChangeTrackingProvider`` provider :)
-* Then eventually launch the first sync, and get the **2752** items from the **Server**, and apply them on the **Client**.
-
-Now everything is configured and the first sync is successfull.  
-
-We can add **101** items in the :guilabel:`ProductCategory`  table (on the server side, `Adventureworks`):
-
-.. code-block:: sql
-
-    Insert into ProductCategory (ProductCategoryID, Name)
-    Select newid(), SUBSTRING(CONVERT(varchar(255), NEWID()), 0, 7)
-    Go 100
-
-From the same console application (indeed, we have a `do while` loop), same code, just hit `enter` to relaunch the synchronization and see the results:
+For subsequent syncs, all the metadata is already in place, so only the deltas are exchanged. Update a row, hit enter again, and you'll see something like:
 
 .. code-block:: bash
 
     Synchronization done.
-            Total changes  uploaded: 0
-            Total changes  downloaded: 100
-            Total changes  applied on client: 100
-            Total changes  applied on server: 0
-            Total changes  failed to apply on client: 0
-            Total changes  failed to apply on server: 0
-            Total resolved conflicts: 0
-            Total duration :00.00:00.059
-
-Boom, it's .... fast, isn't it ?
-
-
-
+        Total changes  uploaded: 0
+        Total changes  downloaded: 100
+        Total changes  applied on client: 100
+        Total changes  applied on server: 0
+        Total changes  failed to apply on client: 0
+        Total changes  failed to apply on server: 0
+        Total resolved conflicts: 0
+        Total duration :00.00:00.059

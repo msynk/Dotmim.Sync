@@ -4,34 +4,25 @@ Conflicts
 Overview
 ^^^^^^^^^^^^^
 
-Conflicts occurs when a client update / delete / insert a record that is updated / deleted or inserted on the server as well, *before any sync happened*.
+Conflicts arise when both the client and the server have changed the same row, in incompatible ways, between two syncs.
 
-As an example, we can imagine a conflict occuring during an update on a column called ``Street`:
+Example, on a column ``Street``:
 
-1) As a starting point, both server and client has a value of ``Street=1 Bellevue Avenue`` after an initial sync (where no conflicts occured).
-2) Server is updating the row with a value of "*1 bis Bellevue Avenue*".
-3) Client is updating as well the same row value with "*2 Bellevue Avenue*".
-4) Sync is launched, and a conflict is raised **on the server side**.
-
-Here is the diagram of the situation:
+1. After an initial sync both sides have ``Street = '1 Bellevue Avenue'``.
+2. The server updates the row to ``'1 bis Bellevue Avenue'``.
+3. The client updates the same row to ``'2 Bellevue Avenue'``.
+4. A new sync runs and the conflict is detected on the **server** side.
 
 .. image:: assets/Conflict01.png
 
-By default, conflicts are resolved automaticaly using the configuration policy property ``ConflictResolutionPolicy`` set in the ``SyncOptions`` object :  
+By default, conflicts are resolved automatically using ``SyncOptions.ConflictResolutionPolicy``:
 
-You can choose: 
-
-* ``ConflictResolutionPolicy.ServerWins`` : The server is the winner of any conflict. this behavior is the default behavior.
-* ``ConflictResolutionPolicy.ClientWins`` : The client is the winner of any conflict.
-
-.. hint:: Default value is ``ServerWins``.
+* ``ConflictResolutionPolicy.ServerWins``: the server row wins. **Default.**
+* ``ConflictResolutionPolicy.ClientWins``: the client row wins.
 
 .. code-block:: csharp
 
     var options = new SyncOptions { ConflictResolutionPolicy = ConflictResolutionPolicy.ServerWins };
-
-Here is the same diagram with the final step, where resolution is set to ``ServerWins`` (default value, by the way)
-
 
 .. image:: assets/Conflict02.png
 
@@ -39,23 +30,22 @@ Here is the same diagram with the final step, where resolution is set to ``Serve
 Resolution
 ^^^^^^^^^^^^^^^^^^^^^^
 
-.. warning:: A conflict is always resolved on the server side.
+.. warning:: A conflict is always resolved on the **server** side.
 
-Depending on your policy resolution, the workflow could be:
+Depending on the policy:
 
-* A conflict is generated on the client and the server side.
-* The client is launching a sync processus.
-* The server tries to apply the row and a conflict is generated.
-* The server resolves the conflict on the server side.
-* If the server wins, the resolved server row is sent to the client and is *force-applied* on the client database.
-* If the client wins, the server will *force-apply* the client row on the server. Nothing happen on the client, since the row is correct.
+* The client uploads its row.
+* The server tries to apply it and detects a conflict.
+* The server resolves the conflict using the policy or your custom code.
+* If the server wins, the resolved server row is sent back and force-applied on the client.
+* If the client wins, the client row is force-applied on the server. Nothing changes on the client.
 
-Here is the workflow, when the conflict resolution is set to ``ServerWins`` in an **HTTP** mode:
+In HTTP mode with ``ServerWins``:
 
 .. image:: assets/Conflict03.png
 
 
-Here is the same workflow, when the conflict resolution is now set to ``ClientWins``:
+With ``ClientWins``:
 
 .. image:: assets/Conflict04.png
 
@@ -63,125 +53,149 @@ Here is the same workflow, when the conflict resolution is now set to ``ClientWi
 Handling conflicts manually
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-| If you decide to manually resolve a conflict, the ``ConflictResolutionPolicy`` option will be ignored.  
-| To be able to resolve a conflict, you just have to *Intercept*  the ``ApplyChangedFailed`` method and choose the correct version.  
+If you decide to resolve conflicts yourself, the global ``ConflictResolutionPolicy`` is bypassed for the rows you handle. Subscribe to the ``OnApplyChangesConflictOccured`` interceptor on the **remote** orchestrator (or use the convenience method on the agent which forwards to the remote):
 
 .. code-block:: csharp
 
-    agent.OnApplyChangesFailed(args =>
+    agent.OnApplyChangesConflictOccured(async args =>
     {
-    // do stuff and choose correct resolution policy
+        // Inspect the conflict and choose a Resolution.
     });
 
 
-The ``ApplyChangeFailedEventArgs`` argument contains all the required properties to be able to resolve your conflict.
+``ApplyChangesConflictOccuredArgs`` exposes:
 
-You will determinate the correct version through the `Action` property of type ``ConflictResolution``:
+* ``Resolution`` (``ConflictResolution``): how to resolve the conflict. See enum below.
+* ``SenderScopeId`` (``Guid?``): the scope id that will be marked as winner when the row is rewritten in tracking tables.
+* ``FinalRow`` (``SyncRow``): the row written to both sides when ``Resolution = MergeRow``. Pre-populated with the conflict row data.
+* ``GetSyncConflictAsync()``: an awaitable method that returns a ``SyncConflict`` containing both ``LocalRow`` and ``RemoteRow`` to compare.
+* ``Connection`` / ``Transaction``: the active connection and transaction.
 
+.. note:: You don't have access to ``LocalRow`` and ``RemoteRow`` directly on the args anymore. Call ``await args.GetSyncConflictAsync()`` to materialize them, then read ``conflict.LocalRow``, ``conflict.RemoteRow``, and ``conflict.Type``.
+
+The ``ConflictResolution`` enumeration:
 
 .. code-block:: csharp
 
     public enum ConflictResolution
     {
-        /// <summary>
-        /// Indicates that the change on the server is the conflict winner
-        /// </summary>
+        /// <summary>The server change wins.</summary>
         ServerWins,
 
-        /// <summary>
-        /// Indicates that the change sent by the client is the conflict winner
-        /// </summary>
+        /// <summary>The client change wins.</summary>
         ClientWins,
 
-        /// <summary>
-        /// Indicates that you will manage the conflict by filling the final row and sent it to 
-        /// both client and server
-        /// </summary>
+        /// <summary>You provide a merged row applied to both sides via FinalRow.</summary>
         MergeRow,
 
-        /// <summary>
-        /// Indicates that you want to rollback the whole sync process
-        /// </summary>
-        Rollback
+        /// <summary>Treat as an error; the OnApplyChangesErrorOccured interceptor takes over.</summary>
+        Throw,
     }
 
+* ``ClientWins``: the client row is force-applied on the server.
+* ``ServerWins``: the server row is sent back to the client and force-applied there.
+* ``MergeRow``: ``FinalRow`` is applied on both sides.
+* ``Throw``: the apply is treated as an error. See `Errors <Errors.html>`_.
 
+The ``SyncConflict`` object exposes:
 
-* ``ConflictResolution.ClientWins`` : The client row will be applied on server, even if there is a conflict, so the client row wins.
-* ``ConflictResolution.ServerWins`` : The client row won't be applied on the server, so the server row wins.
-* ``ConflictResolution.MergeRow``   : It's up to you to choose the correct row to send on both server and client. the ``FinalRow`` instance will be used instead of Server or Client row.
+* ``LocalRow``: the conflicting row from the local (server) side. Read-only.
+* ``RemoteRow``: the conflicting row from the remote (client) side. Read-only.
+* ``Type``: a ``ConflictType`` value describing what kind of conflict was detected.
 
-You are able to compare the row in conflict through the ``Conflict`` property of type ``SyncConflict``:
+The ``ConflictType`` values:
 
-* ``Conflict.LocalRow``   : Contains the conflict row from the client side. This row is readonly.
-* ``Conflict.RemoteRow``  : Contains the conflict row from the server side. This row is readonly.
-* ``Conflict.Type``       : Gets the ``ConflictType`` enumeration. For example ``ConflictType.RemoteUpdateLocalUpdate`` represents a conflict row beetween an updated row on the server and the same row updated on the client as well.
+.. code-block:: csharp
 
-| You can use the current connection during this event to be able to perform actions on the server side through the ``DbConnection`` and ``DbTransaction`` properties.  
-| If you decide to rollback the transaction, all the sync process will be rollback. 
+    public enum ConflictType
+    {
+        /// <summary>Apply failed with an exception.</summary>
+        ErrorsOccurred,
 
-| Eventually, the ``FinalRow`` property is used when you specify an Action to ``ConflictAction.MergeRow``. 
-| You decide what will contains the row applied on both server and client side. Be careful, the ``FinalRow`` property is null until you specify the ``Action`` property to ``ConflictAction.MergeRow`` !
+        /// <summary>Unique key constraint hit on the remote side.</summary>
+        UniqueKeyConstraint,
+
+        // Update / update or delete / delete
+        RemoteExistsLocalExists,
+        RemoteIsDeletedLocalIsDeleted,
+
+        // Updated / inserted on one side, missing on the other
+        RemoteExistsLocalNotExists,
+        RemoteNotExistsLocalExists,
+
+        // Deleted on one side, updated / inserted on the other
+        RemoteExistsLocalIsDeleted,
+        RemoteIsDeletedLocalExists,
+
+        // Deleted on remote, missing on local
+        RemoteIsDeletedLocalNotExists,
+    }
+
 
 TCP mode
 -----------------
 
-Manually resolving a conflict based on a column value:
+Resolving a conflict based on a column value:
 
 .. code-block:: csharp
 
-    agent.OnApplyChangesFailed(e =>
+    agent.OnApplyChangesConflictOccured(async args =>
     {
-        if (e.Conflict.RemoteRow.Table.TableName == "Region")
+        var conflict = await args.GetSyncConflictAsync();
+
+        if (conflict.RemoteRow.SchemaTable.TableName == "Region")
         {
-            e.Action = (int)e.Conflict.RemoteRow["Id"] == 1 ? 
-                    ConflictResolution.ClientWins :
-                    ConflictResolution.ServerWins;
+            args.Resolution = (int)conflict.RemoteRow["Id"] == 1
+                ? ConflictResolution.ClientWins
+                : ConflictResolution.ServerWins;
         }
-    }
+    });
 
 
-Manually resolving a conflict based on the conflict type :
+Resolving based on the conflict type:
 
 .. code-block:: csharp
 
-    agent.OnApplyChangesFailed(args =>
+    agent.OnApplyChangesConflictOccured(async args =>
     {
-        switch (args.Conflict.Type)
+        var conflict = await args.GetSyncConflictAsync();
+
+        switch (conflict.Type)
         {
-            //
             case ConflictType.RemoteExistsLocalExists:
             case ConflictType.RemoteExistsLocalIsDeleted:
             case ConflictType.RemoteIsDeletedLocalExists:
             case ConflictType.RemoteIsDeletedLocalIsDeleted:
-            case ConflictType.RemoteCleanedupDeleteLocalUpdate:
             case ConflictType.RemoteExistsLocalNotExists:
             case ConflictType.RemoteIsDeletedLocalNotExists:
             default:
+                args.Resolution = ConflictResolution.ServerWins;
                 break;
         }
     });
 
 
-Resolving a conflict by specifying a merged row :
+Merging a row:
 
 .. code-block:: csharp
 
-    agent.OnApplyChangesFailed(e =>
+    agent.OnApplyChangesConflictOccured(async args =>
     {
-        if (e.Conflict.RemoteRow.Table.TableName == "Region")
+        var conflict = await args.GetSyncConflictAsync();
+
+        if (conflict.RemoteRow.SchemaTable.TableName == "Region")
         {
-            e.Action = ConflictResolution.MergeRow;
-            e.FinalRow["RegionDescription"] = "Eastern alone !";
+            args.Resolution = ConflictResolution.MergeRow;
+            args.FinalRow["RegionDescription"] = "Eastern alone!";
         }
-    }
+    });
 
-.. note:: Be careful, the ``e.FinalRow`` is null until you set the ``Action`` property to ``ConflictAction.MergeRow`` !
+.. note:: ``FinalRow`` is pre-populated with the conflict row data when the args are created. Set ``Resolution = ConflictResolution.MergeRow`` and update the columns you want to override.
 
-HTTP Mode
+HTTP mode
 ------------------
 
-We saw that conflicts are resolved on the server side, if you are in an **HTTP** mode, involving a server web side, it is there that you need to intercept failed applied changes:
+In HTTP mode conflicts are resolved on the server. Subscribe to the interceptor on the ``WebServerAgent`` ``RemoteOrchestrator``:
 
 .. code-block:: csharp
 
@@ -189,113 +203,78 @@ We saw that conflicts are resolved on the server side, if you are in an **HTTP**
     [ApiController]
     public class SyncController : ControllerBase
     {
-        private WebServerAgent webServerAgent;
+        private readonly WebServerAgent webServerAgent;
 
-        // Injected thanks to Dependency Injection
-        public SyncController(WebServerAgent webServerAgent) 
+        public SyncController(WebServerAgent webServerAgent)
             => this.webServerAgent = webServerAgent;
 
+        [HttpPost]
         public async Task Post()
         {
-            webServerAgent.RemoteOrchestrator.OnApplyChangesFailed(e =>
+            webServerAgent.RemoteOrchestrator.OnApplyChangesConflictOccured(async args =>
             {
-                if (e.Conflict.RemoteRow.SchemaTable.TableName == "Region")
+                var conflict = await args.GetSyncConflictAsync();
+
+                if (conflict.RemoteRow.SchemaTable.TableName == "Region")
                 {
-                    e.Resolution = ConflictResolution.MergeRow;
-                    e.FinalRow["RegionDescription"] = "Eastern alone !";
+                    args.Resolution = ConflictResolution.MergeRow;
+                    args.FinalRow["RegionDescription"] = "Eastern alone!";
                 }
                 else
                 {
-                    e.Resolution = ConflictResolution.ServerWins;
+                    args.Resolution = ConflictResolution.ServerWins;
                 }
             });
 
-            // handle request
             await webServerAgent.HandleRequestAsync(this.HttpContext);
-
         }
 
-        /// <summary>
-        /// This Get handler is optional. 
-        /// It allows you to see the configuration hosted on the server
-        /// The configuration is shown only if Environmenent == Development
-        /// </summary>
+        // Optional GET to inspect the configuration in development.
         [HttpGet]
         public Task Get() => this.HttpContext.WriteHelloAsync(webServerAgent);
     }
 
+
 Handling conflicts from the client side
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-| As we said, all the conflicts are resolved from the server side.  
-| But, using a **Two sync trick**, you are able to resolve the conflict from the client side.
+Conflicts always resolve on the server, but you can let the user pick the winner on the client by combining a server-side ``ServerWins`` with a *two sync* dance:
 
+1. First sync: the conflict is detected and resolved on the server. The server row is sent back to the client.
+2. Locally, in an interceptor on the **local** orchestrator, you let the user choose what they want.
+3. Second sync: the now-correct local row is uploaded to the server.
 
-Basically the process is occuring in this order:
-- The first sync will raise the conflict and will be resolved on the server.
-- The first sync will send back the resolved conflict to the client, containing the server row and the client row
-- From the client side, you will now be able to ask the client to choose the correct version
-- The second sync will then send back the *new* version of the row to the server.
+.. warning:: This pattern requires ``ConflictResolutionPolicy.ServerWins``.
 
-
-.. warning:: To be able to use this technic, the ConflictResolutionPolicy MUST be set to ConflictResolutionPolicy.ServerWins
-
-
-Here is a full example using this special trick:
 
 .. code-block:: csharp
 
-    var agent = new SyncAgent(clientProvider, serverProvider, options, setup);
-
+    var agent = new SyncAgent(clientProvider, serverProvider, options);
     var localOrchestrator = agent.LocalOrchestrator;
-    var remoteOrchestrator = agent.RemoteOrchestrator;
 
-    // Conflict resolution MUST BE set to ServerWins
+    // Conflict resolution must be ServerWins for this pattern.
     options.ConflictResolutionPolicy = ConflictResolutionPolicy.ServerWins;
 
-    // From client : Remote is server, Local is client
-    // From here, we are going to let the client decides 
-    // who is the winner of the conflict :
-    localOrchestrator.OnApplyChangesFailed(acf =>
+    // Subscribe locally: this is fired after the server pushed back its winning row.
+    localOrchestrator.OnApplyChangesConflictOccured(async args =>
     {
-        // Check conflict is correctly set
-        var localRow = acf.Conflict.LocalRow;
-        var remoteRow = acf.Conflict.RemoteRow;
+        var conflict = await args.GetSyncConflictAsync();
 
-        // From that point, you can easily letting the client decides 
-        // who is the winner
-        // Show a UI with the local / remote row and 
-        // letting him decides what is the good row version
-        // for testing purpose; will just going to set name to some fancy BLA BLA value
+        // conflict.LocalRow holds the server-applied (incoming) row.
+        // conflict.RemoteRow holds what the client had locally.
+        // Show your UI here, let the user pick or merge.
 
-        // SHOW UI
-        // OH.... CLIENT DECIDED TO SET NAME TO "BLA BLA BLA" 
+        // For demo purposes, we hard-code a value.
+        args.FinalRow["Name"] = clientNameDecidedOnClientMachine;
+        args.Resolution = ConflictResolution.MergeRow;
 
-        // BE AS FAST AS POSSIBLE IN YOUR DESICION, 
-        // SINCE WE HAVE AN OPENED CONNECTION / TRANSACTION RUNNING
-    
-        remoteRow["Name"] = clientNameDecidedOnClientMachine;
-
-        // Mandatory to override the winner registered in the tracking table
-        // Use with caution !
-        // To be sure the row will be marked as updated locally, 
-        // the scope id should be set to null
-        acf.SenderScopeId = null;
+        // Set SenderScopeId to null so the row is re-flagged as a local change
+        // and uploaded on the next sync.
+        args.SenderScopeId = null;
     });
 
-    // First sync, we allow server to resolve the conflict and send back the result to client
+    // First sync: server resolves the conflict, sends back the winning row.
     var s = await agent.SynchronizeAsync();
-    
-    Assert.Equal(1, s.TotalChangesDownloaded);
-    Assert.Equal(1, s.TotalChangesUploaded);
-    Assert.Equal(1, s.TotalResolvedConflicts);
 
-    // From this point the Server row Name is STILL "SRV...."
-    // And the Client row NAME is "BLA BLA BLA..."
-    // Make a new sync to send "BLA BLA BLA..." to Server
-
+    // Second sync: the client's adjusted row is uploaded.
     s = await agent.SynchronizeAsync();
-
-    Assert.Equal(0, s.TotalChangesDownloaded);
-    Assert.Equal(1, s.TotalChangesUploaded);
-    Assert.Equal(0, s.TotalResolvedConflicts);

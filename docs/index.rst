@@ -10,14 +10,14 @@ Welcome to Dotmim.Sync
    :align: center
    :alt: icon
 
-   
-**DotMim.Sync** (**DMS**) is a straightforward framework for syncing relational databases, developed on top of **.Net Standard 2.0**, available and ready to use within  **Xamarin**, **MAUI**, **.NET Core 3.1**, **.NET 6 & 7** and so on :)  
 
-Available for syncing **SQL Server**, **MySQL**, **MariaDB**, **PostgreSQL** and **Sqlite** databases.
+**DotMim.Sync** (**DMS**) is a straightforward framework for syncing relational databases. The current release (**1.3.16**) targets **.NET 10** and is built on the modern .NET unified runtime, so it runs on any .NET 10 capable host: console apps, ASP.NET Core, Worker Services, MAUI, Xamarin successors, etc.
 
-.. note:: The source code is available on `Github <https://www.github.com/mimetis/dotmim.sync>`_. 
-   
-   This framework is still in beta. There is no support other than me and the time I can put on it. Don't be afraid to reach me out, but expect delay sometimes :)
+Available providers cover **SQL Server** (with optional **Change Tracking** support), **MySQL**, **MariaDB**, **PostgreSQL**, and **SQLite**.
+
+.. note:: The source code is available on `Github <https://www.github.com/mimetis/dotmim.sync>`_.
+
+   This framework is a community project. There is no formal support contract; reach out via GitHub issues and expect best-effort responses.
 
 .. image:: assets/allinone.png
    :align: center
@@ -29,77 +29,75 @@ Available for syncing **SQL Server**, **MySQL**, **MariaDB**, **PostgreSQL** and
 Starting from scratch
 =============================================
 
-Here is the easiest way to create a first sync, from scratch : 
+Here is the easiest way to create a first sync, from scratch:
 
-* Create a **.NET Core 3.1** or **.NET 6** / **.NET 7** console application.  
-* Add the nugets packages `DotMim.Sync.SqlServer <https://www.nuget.org/packages/Dotmim.Sync.SqlServer>`_  and `DotMim.Sync.Sqlite <https://www.nuget.org/packages/Dotmim.Sync.Sqlite>`_  
-* If you don't have any hub database for testing purpose, use this one : `AdventureWorks lightweight script for SQL Server </CreateAdventureWorks.sql>`_ 
-* If you want to test **MySql**, use this script : `AdventureWorks lightweight script for MySQL Server </CreateMySqlAdventureWorks.sql>`_   
+* Create a **.NET 10** console application.
+* Add the nuget packages `DotMim.Sync.SqlServer <https://www.nuget.org/packages/Dotmim.Sync.SqlServer>`_  and `DotMim.Sync.Sqlite <https://www.nuget.org/packages/Dotmim.Sync.Sqlite>`_.
+* If you don't have any hub database for testing purposes, use the AdventureWorks sample script available in the repository.
 
 Add this code:
 
 .. code-block:: csharp
 
-   // Sql Server provider, the "server" or "hub".
-   SqlSyncProvider serverProvider = new SqlSyncProvider(
-      @"Data Source=.;Initial Catalog=AdventureWorks;Integrated Security=true;");
+   // SQL Server provider, the "server" or "hub".
+   var serverProvider = new SqlSyncProvider(
+       @"Data Source=.;Initial Catalog=AdventureWorks;Integrated Security=true;Encrypt=False;");
 
-   // Sqlite Client provider acting as the "client"
-   SqliteSyncProvider clientProvider = new SqliteSyncProvider("advworks.db");
+   // SQLite client provider acting as the "client".
+   var clientProvider = new SqliteSyncProvider("advworks.db");
 
    // Tables involved in the sync process:
-   var setup = new SyncSetup("ProductCategory", "ProductDescription", "ProductModel", 
-    "Product", "ProductModelProductDescription", "Address", "Customer", 
-    "CustomerAddress", "SalesOrderHeader", "SalesOrderDetail" );
+   var setup = new SyncSetup("ProductCategory", "ProductDescription", "ProductModel",
+       "Product", "ProductModelProductDescription", "Address", "Customer",
+       "CustomerAddress", "SalesOrderHeader", "SalesOrderDetail");
 
-   // Sync agent
-   SyncAgent agent = new SyncAgent(clientProvider, serverProvider);
+   // Sync agent.
+   var agent = new SyncAgent(clientProvider, serverProvider);
 
    do
    {
-      var result = await agent.SynchronizeAsync(setup);
-      Console.WriteLine(result);
+       var result = await agent.SynchronizeAsync(setup);
+       Console.WriteLine(result);
 
    } while (Console.ReadKey().Key != ConsoleKey.Escape);
 
 
 And here is the result you should have, after a few seconds:
 
-.. code-block:: csharp
+.. code-block:: bash
 
    Synchronization done.
-         Total changes  uploaded: 0
-         Total changes  downloaded: 3514
-         Total changes  applied on client: 3514
-         Total changes  applied on server: 0
-         Total changes  failed to apply on client: 0
-         Total changes  failed to apply on server: 0
-         Total resolved conflicts: 0
-         Total duration :00.00:02.125
+       Total changes  uploaded: 0
+       Total changes  downloaded: 3514
+       Total changes  applied on client: 3514
+       Total changes  applied on server: 0
+       Total changes  failed to apply on client: 0
+       Total changes  failed to apply on server: 0
+       Total resolved conflicts: 0
+       Total duration :00.00:02.125
 
-You're done !
+You're done.
 
-Now try to update a row in your client or server database, then hit enter again.   
-You should see something like that:
+Now try to update a row in your client or server database, then hit enter again.
+You should see something like:
 
-.. code-block:: csharp
+.. code-block:: bash
 
    Synchronization done.
-         Total changes  uploaded: 0
-         Total changes  downloaded: 1
-         Total changes  applied on client: 1
-         Total changes  applied on server: 0
-         Total changes  failed to apply on client: 0
-         Total changes  failed to apply on server: 0
-         Total resolved conflicts: 0
-         Total duration :00.00:00.030
+       Total changes  uploaded: 0
+       Total changes  downloaded: 1
+       Total changes  applied on client: 1
+       Total changes  applied on server: 0
+       Total changes  failed to apply on client: 0
+       Total changes  failed to apply on server: 0
+       Total resolved conflicts: 0
+       Total duration :00.00:00.030
 
-Yes it's blazing fast !
 
 Need Help
 =============================================
 
-Feel free to ping me: `@sebpertus <http://www.twitter.com/sebpertus>`_ 
+Open an issue on the `GitHub repository <https://github.com/Mimetis/Dotmim.Sync/issues>`_ or ping `@sebpertus <http://www.twitter.com/sebpertus>`_.
 
 
 
@@ -124,10 +122,14 @@ Feel free to ping me: `@sebpertus <http://www.twitter.com/sebpertus>`_
    Snapshot
    Configuration
    Provision
+   Migration
    Metadatas
    Conflict
    Errors
    Filters
+   ShadowTables
+   Bulk
+   Resume
    SqliteEncryption
    AlreadyExisting
    Debugging

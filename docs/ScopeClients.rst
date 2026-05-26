@@ -1,90 +1,82 @@
-ScopeInfoClients
+Scope clients
 ================================
 
-What is a scope client ?
+What is a scope client?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-We saw that a **scope** is a set of tables and is stored in the :guilabel:`scope_info` table.
+A **scope** is a set of tables (see `Scopes <Scopes.html>`_) and lives in the :guilabel:`scope_info` table.
 
-A **scope client** is a the association of one scope with a filter, and is stored in the :guilabel:`scope_info_client`  table.
+A **scope client** is the combination of a scope and a specific set of filter parameter values. Each scope client is stored in the :guilabel:`scope_info_client` table on both the server and the client.
 
-A scope client record contains:
+Concretely:
 
-- A scope (think "**FROM**" in a database) : Set of tables defined in the scope_info table
-- A list of filter parameters (think "**WHERE**" in a database) : The filter definition is stored in the scope. We are talking here about the values of theses filter.
+* The scope holds the **what**: the tables to sync (from a ``SyncSetup``) and the filter definitions.
+* The scope client holds the **values for the filter parameters** for one specific client / sync session: imagine ``ProductCategoryId = 'Books'`` versus ``'Movies'``.
 
-Let's imagine you are synchronizing some **Products** and **ProductCategories**, where you want only the products of the category **"Books"**. You will have to define a scope client with the following parameters:
-
-- **Scope** : :guilabel:`Product`, :guilabel:`ProductCategory` tables.
-- **Filter parameters values** : ``ProductCategoryID = "Books"``
-
-**DMS** will automatically create:
-
-- The scope in **scope_info** with the 2 tables :guilabel:`Product`, :guilabel:`ProductCategory`.
-- The filter parameter value ``ProductCategoryID = 'Books'`` in the **scope_info_client** table.
+Together they identify a sync stream. The server tracks one ``scope_info_client`` row per client per filter parameter combination.
 
 
-Methods & Properties
+Methods & properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can access the scope client information, as a ``ScopeInfoClient`` instance, using a ``LocalOrchestrator`` or ``RemoteOrchestrator`` instance (directly from a ``SyncAgent`` instance or by creating a new instance directly)
+Scope client info is exposed as the ``ScopeInfoClient`` class. Use ``LocalOrchestrator.GetScopeInfoClientAsync`` (or ``RemoteOrchestrator.GetScopeInfoClientAsync(clientId, ...)``) to get one.
 
 
 Properties
 ---------------------
 
-Once a first scope sync has been done, you will have, on both sides, a :guilabel:`scope_info_client`  table, containing:
+After a successful sync, the ``scope_info_client`` table contains for each scope-client pair:
 
-- A **scope name**: Defines a user friendly name (unique) for your scope. Default name is ``DefaultScope``. References the :guilabel:`scope_info` table.
-- A **scope info client id**: Defines a unique id for the scope client. Think this Id as the uniqure representation of the client database.
-- A **scope info hash**: Defines the hash of the JSON property ``scope_parameters``.
-- A **scope info parameters**: Defines the parameters for this scope info client. This is a JSON property, containing the list of filter parameters values, and is, combined with **scope_name**, unique.
-- A **scope info timestamp**: Defines the last time the scope info client has been updated.
-- A **scope info server timestamp**: Defines the last time the scope info client has been updated on the server side.
-- A **scope last sync date**: Defines the last time the scope has been synchronized, as a datetime.
-- A **scope last sync duration**: Defines the last time the scope has been synchronized, as a duration.
-- A **scope errors**: Defines the last errors happened during last sync. Point directly to a BatchInfo directory containing the errors (as JSON files).
-- A **scope properties**: Defines additionnal properties.
+* ``Id`` (``Guid``): the unique id of the client database.
+* ``Name`` (``string``): scope name. Default ``DefaultScope``. References ``scope_info``.
+* ``Hash`` (``string``): hash of the filter parameter values.
+* ``LastSyncTimestamp`` (``long?``): last server timestamp the client successfully consumed.
+* ``LastServerSyncTimestamp`` (``long?``): last server timestamp the server saw on this scope client.
+* ``IsNewScope`` (``bool``): true on the very first sync.
+* ``Parameters`` (``SyncParameters``): the filter parameter values for this scope client.
+* ``LastSync`` (``DateTime?``): wall clock time of the last successful sync.
+* ``LastSyncDuration`` (``long``): duration of the last sync in ticks.
+* ``LastSyncDurationString`` (``string``): human-readable duration.
+* ``Errors`` (``string``): if the last sync logged failed rows, this points to the error batch info directory.
+* ``Properties`` (``string``): free-form JSON properties.
 
-Here is a small example to see how scope client infos are created:
+Example creation:
 
 .. code-block:: csharp
 
-  var setup = new SyncSetup("ProductCategory", "Product", "Employee");
-  
-  setup.Tables[productCategoryTableName].Columns
-          .AddRange("ProductCategoryId", "Name", "rowguid", "ModifiedDate");
+    var setup = new SyncSetup("ProductCategory", "Product", "Employee");
 
-  setup.Filters.Add("ProductCategory", "ProductCategoryId");
-  setup.Filters.Add("Product", "ProductCategoryId");
+    setup.Tables[productCategoryTableName].Columns
+        .AddRange("ProductCategoryId", "Name", "rowguid", "ModifiedDate");
 
-  var pMount = new SyncParameters(("ProductCategoryId", "MOUNTB"));
-  var pRoad = new SyncParameters(("ProductCategoryId", "ROADFR"));
+    setup.Filters.Add("ProductCategory", "ProductCategoryId");
+    setup.Filters.Add("Product", "ProductCategoryId");
 
-  var agent = new SyncAgent(client.Provider, Server.Provider);
-  var r1 = await agent.SynchronizeAsync("v1", setup, pMount);
-  var r2 = await agent.SynchronizeAsync("v1", setup, pRoad);
+    var pMount = new SyncParameters(("ProductCategoryId", "MOUNTB"));
+    var pRoad = new SyncParameters(("ProductCategoryId", "ROADFR"));
 
-Once the sync is done, you will have 2 scope clients created:
+    var agent = new SyncAgent(client.Provider, server.Provider);
+    var r1 = await agent.SynchronizeAsync("v1", setup, pMount);
+    var r2 = await agent.SynchronizeAsync("v1", setup, pRoad);
 
+After the two syncs, ``scope_info_client`` looks like this:
 
 ===============   ============================================== ================================================== ==================================================
-sync_scope_id     sync_scope_name                                sync_scope_parameters                              scope_last_sync_timestamp  
+sync_scope_id     sync_scope_name                                sync_scope_parameters                              scope_last_sync_timestamp
 ---------------   ---------------------------------------------- -------------------------------------------------- --------------------------------------------------
 F02BC17-A478-..   v1                                             [{pn:ProductCategoryId, v:MOUNTB}]                 2000
 ---------------   ---------------------------------------------- -------------------------------------------------- --------------------------------------------------
 F02BC17-A478-..   v1                                             [{pn:ProductCategoryId, v:ROADFR}]                 20022
 ===============   ============================================== ================================================== ==================================================
 
-Each scope client is independant, and can be synchronized separately, since they have their own **timestamp** associated with their combo **scope name / scope parameters**.
+Each scope client has its own bookmark and can sync independently of the other. ``scope_info`` still contains a single row per scope; only the parameter values differ.
 
-.. note:: We have the same scope for both sync, with the same tables / scope name. You'll see that the :guilabel:`scope_info`  will contains only one record for the scope v1
 
-The corresponding .NET objet is the ``ScopeInfoClient`` class:
+The corresponding C# class:
 
 .. code-block:: csharp
 
- public class ScopeInfoClient
+    public class ScopeInfoClient
     {
         public Guid Id { get; set; }
         public string Name { get; set; }
@@ -98,57 +90,80 @@ The corresponding .NET objet is the ``ScopeInfoClient`` class:
         public string Properties { get; set; }
         public string Errors { get; set; }
         public string LastSyncDurationString { get; }
+
+        public void ShadowScope(ScopeInfoClient oldScopeInfoClient);
     }
 
 
 GetScopeInfoClientAsync
 ------------------------
 
-This method allows to get a scope client information, from a scope name and a list of filter parameters values.
+Returns the scope client matching a scope name and a parameter set. If the row doesn't exist, a new one is created and persisted.
 
 .. code-block:: csharp
 
-  var parameters = new SyncParameters(("ProductCategoryId", "MOUNTB"));
-  var scopeInfoClient = await orchestrator.GetScopeInfoClientAsync("v1", parameters);
+    var parameters = new SyncParameters(("ProductCategoryId", "MOUNTB"));
+    var scopeInfoClient = await orchestrator.GetScopeInfoClientAsync("v1", parameters);
 
-.. note:: If the :guilabel:`scope_info_client`  does not exists, it will be created, and the a new record is added.
-
-.. warning:: If you call this method using a ``RemoteOrchestrator``, you'll need to pass the clientId parameter 
-
-GetAllScopeInfosAsync
-----------------------
-
-Returns all scope clients information, from a scope name.
+The full overload set on ``LocalOrchestrator``:
 
 .. code-block:: csharp
 
-    var cAllScopeInfoClients = await agent.LocalOrchestrator.GetAllScopeInfoClientsAsync();
+    Task<ScopeInfoClient> GetScopeInfoClientAsync(
+        string scopeName = SyncOptions.DefaultScopeName,
+        SyncParameters syncParameters = default,
+        DbConnection connection = null, DbTransaction transaction = null);
 
-    var minServerTimeStamp = cAllScopeInfoClients.Min(sic => sic.LastServerSyncTimestamp);
-    var minClientTimeStamp = cAllScopeInfoClients.Min(sic => sic.LastSyncTimestamp);
-    var minLastSync = cAllScopeInfoClients.Min(sic => sic.LastSync);
+On ``RemoteOrchestrator`` you also need a client id (since the server tracks many clients):
+
+.. code-block:: csharp
+
+    var clientScope = await remoteOrchestrator.GetScopeInfoClientAsync(
+        clientId, scopeName, parameters);
 
 
+GetAllScopeInfoClientsAsync
+-----------------------------
 
-SaveScopeInfoAsync
+Returns every scope client row. Useful for cleanup logic or dashboards.
+
+.. code-block:: csharp
+
+    var allClients = await agent.LocalOrchestrator.GetAllScopeInfoClientsAsync();
+
+    var minServerTimeStamp = allClients.Min(sic => sic.LastServerSyncTimestamp);
+    var minClientTimeStamp = allClients.Min(sic => sic.LastSyncTimestamp);
+    var minLastSync = allClients.Min(sic => sic.LastSync);
+
+
+SaveScopeInfoClientAsync
+-------------------------------
+
+Save a scope client back to the database. You usually don't need to call this directly, but it's the seam for advanced scenarios like the ``ShadowScope`` migration described in `Provision <Provision.html#multi-scope-migration>`_.
+
+.. code-block:: csharp
+
+    var cScopeInfoClient = await localOrchestrator.GetScopeInfoClientAsync();
+
+    if (cScopeInfoClient.IsNewScope)
+    {
+        cScopeInfoClient.IsNewScope = false;
+        cScopeInfoClient.LastSync = DateTime.Now;
+        cScopeInfoClient.LastSyncTimestamp = 0;
+        cScopeInfoClient.LastServerSyncTimestamp = 0;
+
+        await agent.LocalOrchestrator.SaveScopeInfoClientAsync(cScopeInfoClient);
+    }
+
+
+ShadowScope
 ------------------
 
-This method allows you to save and override a scope client information. You should not have to do it, but some scenarios can be done with this method.
+Copy the timestamps from one scope client to another. Used during multi-scope migrations to make a freshly provisioned scope inherit the bookmark of an older one.
 
 .. code-block:: csharp
 
-  var cScopeInfoClient = await localOrchestrator.GetScopeInfoClientAsync();
-
-  if (cScopeInfoClient.IsNewScope)
-  {
-    cScopeInfoClient.IsNewScope = false;
-    cScopeInfoClient.LastSync = DateTime.Now;
-    cScopeInfoClient.LastSyncTimestamp = 0;
-    cScopeInfoClient.LastServerSyncTimestamp = 0;
-
-    await agent.LocalOrchestrator.SaveScopeInfoClientAsync(cScopeInfoClient);
-  }
-
-
-
-
+    var v1 = await agent.LocalOrchestrator.GetScopeInfoClientAsync("v1");
+    var v0 = await agent.LocalOrchestrator.GetScopeInfoClientAsync("v0");
+    v1.ShadowScope(v0);
+    await agent.LocalOrchestrator.SaveScopeInfoClientAsync(v1);
