@@ -2,8 +2,7 @@
 
 ![DMS](docs/assets/Smallicon.svg)
 
-[![NuGet version (Dotmim.Sync.Core)](https://img.shields.io/nuget/v/Dotmim.Sync.Core.svg)](https://www.nuget.org/packages?q=dotmim.sync)
-[![Documentation Status](https://readthedocs.org/projects/dotmimsync/badge/?version=master)](https://dotmimsync.readthedocs.io/?badge=master)
+
 
 A relational database sync framework for .NET. Define a setup, point at a server and a client provider, and call `SynchronizeAsync`. Works against **SQL Server**, **PostgreSQL**, **MySQL/MariaDB**, and **SQLite**, locally or over HTTPS through ASP.NET Core.
 
